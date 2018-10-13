@@ -827,6 +827,8 @@ extern uint64_t spa_version(spa_t *spa);
 extern boolean_t spa_deflate(spa_t *spa);
 extern metaslab_class_t *spa_normal_class(spa_t *spa);
 extern metaslab_class_t *spa_log_class(spa_t *spa);
+extern void spa_evicting_os_lock(spa_t *);
+extern void spa_evicting_os_unlock(spa_t *);
 extern void spa_evicting_os_register(spa_t *, objset_t *os);
 extern void spa_evicting_os_deregister(spa_t *, objset_t *os);
 extern void spa_evicting_os_wait(spa_t *spa);
@@ -891,6 +893,9 @@ extern void spa_history_log_internal_dd(dsl_dir_t *dd, const char *operation,
     dmu_tx_t *tx, const char *fmt, ...);
 
 extern const char *spa_state_to_name(spa_t *spa);
+
+extern boolean_t spa_exiting(spa_t *spa);
+extern int spa_operation_interrupted(spa_t *spa);
 
 /* error handling */
 struct zbookmark_phys;

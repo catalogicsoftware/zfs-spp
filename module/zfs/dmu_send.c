@@ -66,7 +66,6 @@ int zfs_recv_queue_length = SPA_MAXBLOCKSIZE;
 /* Set this tunable to FALSE to disable setting of DRR_FLAG_FREERECORDS */
 int zfs_send_set_freerecords_bit = B_TRUE;
 
-static char *dmu_recv_tag = "dmu_recv_tag";
 const char *recv_clone_name = "%recv";
 
 #define	BP_SPAN(datablkszsec, indblkshift, level) \
@@ -950,8 +949,11 @@ static int
 send_register(dsl_pool_t *dp, dsl_dataset_t *ds, dmu_sendarg_t *dsp,
     boolean_t owned, void *tag)
 {
-	int err = 0;
+	int err;
+	spa_t *spa = dp->dp_spa;
 
+	spa_evicting_os_lock(spa);
+	err = spa_exiting(spa) == B_FALSE ? 0 : SET_ERROR(ENXIO);
 	if (err == 0) {
 		if (owned) {
 			if (!dsl_dataset_tryown(ds, tag))
@@ -964,6 +966,7 @@ send_register(dsl_pool_t *dp, dsl_dataset_t *ds, dmu_sendarg_t *dsp,
 		list_insert_head(&ds->ds_sendstreams, dsp);
 		mutex_exit(&ds->ds_sendstream_lock);
 	}
+	spa_evicting_os_unlock(spa);
 
 	return (err);
 }
@@ -988,6 +991,7 @@ dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
 	ds_hold_flags_t dsflags = (rawok) ? 0 : DS_HOLD_FLAG_DECRYPT;
 	char *payload;
 	loff_t off;
+	vnode_t *vp;
 
 	/* Common setup if an incremental is being performed. */
 	if (fromds != NULL) {
@@ -1050,9 +1054,11 @@ dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
 
 	while (!to_data->eos_marker && err == 0) {
 		err = do_dump(dsp, to_data);
-		to_data = get_next_record(&to_arg.q, to_data);
-		if (issig(JUSTLOOKING) && issig(FORREAL))
-			err = SET_ERROR(EINTR);
+		if (err == 0) {
+			to_data = get_next_record(&to_arg.q, to_data);
+			err = spa_operation_interrupted(
+			    dmu_objset_spa(dsp->dsa_os));
+		}
 	}
 
 	if (err != 0) {
@@ -1096,7 +1102,8 @@ errout:
 		dsl_dataset_disown(ds, dsflags, tag);
 
 regfail:
-	if (VOP_SEEK(dsp->dsa_fp->f_vnode, dsp->dsa_fp->f_offset, &off, NULL) == 0)
+	vp = dsp->dsa_fp->f_vnode;
+	if (vp != NULL && VOP_SEEK(vp, dsp->dsa_fp->f_offset, &off, NULL) == 0)
 		dsp->dsa_fp->f_offset = off;
 	releasef(dsp->dsa_outfd);
 	kmem_free(dsp, sizeof (dmu_sendarg_t));
@@ -1412,6 +1419,31 @@ typedef struct dmu_recv_begin_arg {
 } dmu_recv_begin_arg_t;
 
 static int
+recv_own(dsl_pool_t *dp, uint64_t dsobj, ds_hold_flags_t dsflags,
+    dmu_recv_cookie_t *drc, dsl_dataset_t **dsp, objset_t **osp)
+{
+	int error;
+	dsl_dataset_t *ds;
+
+	error = dsl_dataset_own_obj(dp, dsobj, dsflags, drc, &ds);
+	if (error != 0)
+		return (error);
+	ds->ds_receiver = drc;
+	*dsp = ds;
+	VERIFY0(dmu_objset_from_ds(ds, osp));
+	return (0);
+}
+
+static void
+recv_disown(dsl_dataset_t *ds, dmu_recv_cookie_t *drc)
+{
+
+	ASSERT3P(ds->ds_receiver, ==, drc);
+	ds->ds_receiver = NULL;
+	dsl_dataset_disown(ds, drc);
+}
+
+static int
 recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
     uint64_t fromguid)
 {
@@ -1691,7 +1723,10 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		dsl_dir_rele(dd, FTAG);
 		drba->drba_cookie->drc_newfs = B_TRUE;
 	}
-	VERIFY0(dsl_dataset_own_obj(dp, dsobj, dmu_recv_tag, &newds));
+
+	error = recv_own(dp, dsobj, drba->drba_cookie, &newds, &os);
+	if (error != 0)
+		return;
 
 	if (drba->drba_cookie->drc_resumable) {
 		uint64_t one = 1;
@@ -1875,13 +1910,16 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
 	uint64_t dsobj;
 	/* 6 extra bytes for /%recv */
 	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
+	int error = 0;
 
 	(void) snprintf(recvname, sizeof (recvname), "%s/%s",
 	    tofs, recv_clone_name);
 
 	if (dsl_dataset_hold(dp, recvname, FTAG, &ds) != 0) {
 		/* %recv does not exist; continue in tofs */
-		VERIFY0(dsl_dataset_hold(dp, tofs, FTAG, &ds));
+		error = dsl_dataset_hold(dp, tofs, FTAG, &ds);
+		if (error != 0)
+			return;
 		drba->drba_cookie->drc_newfs = B_TRUE;
 	}
 
@@ -1890,9 +1928,11 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
 	dmu_buf_will_dirty(ds->ds_dbuf, tx);
 	dsl_dataset_phys(ds)->ds_flags &= ~DS_FLAG_INCONSISTENT;
 	dsobj = ds->ds_object;
-	dsl_dataset_rele(ds, FTAG);
 
-	VERIFY0(dsl_dataset_own_obj(dp, dsobj, dmu_recv_tag, &ds));
+	error = recv_own(dp, dsobj, drba->drba_cookie, &ds, &os);
+	dsl_dataset_rele(ds, FTAG);
+	if (error != 0)
+		return;
 
 	dmu_buf_will_dirty(ds->ds_dbuf, tx);
 	dsl_dataset_phys(ds)->ds_flags |= DS_FLAG_INCONSISTENT;
@@ -1912,11 +1952,13 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
  */
 int
 dmu_recv_begin(char *tofs, char *tosnap, dmu_replay_record_t *drr_begin,
-    boolean_t force, boolean_t resumable, char *origin, dmu_recv_cookie_t *drc)
+    boolean_t force, boolean_t resumable, char *origin, file_t *fp,
+    dmu_recv_cookie_t *drc)
 {
 	dmu_recv_begin_arg_t drba = { 0 };
 
 	bzero(drc, sizeof (dmu_recv_cookie_t));
+	drc->drc_fp = fp;
 	drc->drc_drr_begin = drr_begin;
 	drc->drc_drrb = &drr_begin->drr_u.drr_begin;
 	drc->drc_tosnap = tosnap;
@@ -2682,13 +2724,16 @@ receive_free(struct receive_writer_arg *rwa, struct drr_free *drrf)
 static void
 dmu_recv_cleanup_ds(dmu_recv_cookie_t *drc)
 {
+	dsl_dataset_t *ds = drc->drc_ds;
+
 	if (drc->drc_resumable) {
 		/* wait for our resume state to be written to disk */
 		txg_wait_synced(drc->drc_ds->ds_dir->dd_pool, 0);
-		dsl_dataset_disown(drc->drc_ds, dmu_recv_tag);
+		recv_disown(ds, drc);
 	} else {
 		char name[ZFS_MAX_DATASET_NAME_LEN];
 		dsl_dataset_name(drc->drc_ds, name);
+		recv_disown(ds, drc);
 		dsl_dataset_disown(drc->drc_ds, dmu_recv_tag);
 		(void) dsl_destroy_head(name);
 	}
@@ -3364,10 +3409,10 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	 * we free ra->rrd and exit.
 	 */
 	while (rwa->err == 0) {
-		if (issig(JUSTLOOKING) && issig(FORREAL)) {
-			err = SET_ERROR(EINTR);
+		err = spa_operation_interrupted(
+		    dsl_dataset_get_spa(drc->drc_ds));
+		if (err)
 			break;
-		}
 
 		ASSERT3P(ra->rrd, ==, NULL);
 		ra->rrd = ra->next_rrd;
@@ -3620,7 +3665,7 @@ dmu_recv_end_sync(void *arg, dmu_tx_t *tx)
 	 * we return to open context, so that when we free the dataset's dnode,
 	 * we can evict its bonus buffer.
 	 */
-	dsl_dataset_disown(drc->drc_ds, dmu_recv_tag);
+	recv_disown(drc->drc_ds, drc);
 	drc->drc_ds = NULL;
 }
 
@@ -3709,7 +3754,7 @@ boolean_t
 dmu_objset_is_receiving(objset_t *os)
 {
 	return (os->os_dsl_dataset != NULL &&
-	    os->os_dsl_dataset->ds_owner == dmu_recv_tag);
+	    os->os_dsl_dataset->ds_receiver != NULL);
 }
 
 #if defined(_KERNEL)

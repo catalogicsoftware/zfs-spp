@@ -773,6 +773,22 @@ spa_open_ref(spa_t *spa, void *tag)
 }
 
 /*
+ * Remove a reference to a given spa_t.  Common routine that also includes
+ * notifying a killer if one is registered, when minref has been reached.
+ */
+static void
+spa_close_common(spa_t *spa, void *tag)
+{
+	if (zfs_refcount_remove(&spa->spa_refcount, tag) == spa->spa_minref) {
+		mutex_enter(&spa->spa_evicting_os_lock);
+		if (spa->spa_killer != NULL)
+			POINTER_INVALIDATE(&spa->spa_killer);
+		cv_broadcast(&spa->spa_evicting_os_cv);
+		mutex_exit(&spa->spa_evicting_os_lock);
+	}
+}
+
+/*
  * Remove a reference to the given spa_t.  Must have at least one reference, or
  * have the namespace lock held.
  */
@@ -781,7 +797,7 @@ spa_close(spa_t *spa, void *tag)
 {
 	ASSERT(zfs_refcount_count(&spa->spa_refcount) > spa->spa_minref ||
 	    MUTEX_HELD(&spa_namespace_lock));
-	(void) zfs_refcount_remove(&spa->spa_refcount, tag);
+	spa_close_common(spa, tag);
 }
 
 /*
@@ -795,7 +811,7 @@ spa_close(spa_t *spa, void *tag)
 void
 spa_async_close(spa_t *spa, void *tag)
 {
-	(void) zfs_refcount_remove(&spa->spa_refcount, tag);
+	spa_close_common(spa, tag);
 }
 
 /*
@@ -1720,6 +1736,18 @@ spa_log_class(spa_t *spa)
 }
 
 void
+spa_evicting_os_lock(spa_t *spa)
+{
+	mutex_enter(&spa->spa_evicting_os_lock);
+}
+
+void
+spa_evicting_os_unlock(spa_t *spa)
+{
+	mutex_exit(&spa->spa_evicting_os_lock);
+}
+
+void
 spa_evicting_os_register(spa_t *spa, objset_t *os)
 {
 	mutex_enter(&spa->spa_evicting_os_lock);
@@ -2068,6 +2096,26 @@ spa_maxblocksize(spa_t *spa)
 		return (SPA_OLD_MAXBLOCKSIZE);
 }
 
+/*
+ * NB: must hold spa_namespace_lock or spa_evicting_os_lock if the result of
+ *     this is critical.
+ */
+boolean_t
+spa_exiting(spa_t *spa)
+{
+	return (spa->spa_killer != NULL && spa->spa_killer != curthread);
+}
+
+int
+spa_operation_interrupted(spa_t *spa)
+{
+	if (issig(JUSTLOOKING) && issig(FORREAL))
+		return (SET_ERROR(EINTR));
+	if (spa_exiting(spa))
+		return (SET_ERROR(ENXIO));
+	return (0);
+}
+
 int
 spa_maxdnodesize(spa_t *spa)
 {
@@ -2196,6 +2244,8 @@ EXPORT_SYMBOL(spa_delegation);
 EXPORT_SYMBOL(spa_meta_objset);
 EXPORT_SYMBOL(spa_maxblocksize);
 EXPORT_SYMBOL(spa_maxdnodesize);
+EXPORT_SYMBOL(spa_exiting);
+EXPORT_SYMBOL(spa_operation_interrupted);
 
 /* Miscellaneous support routines */
 EXPORT_SYMBOL(spa_rename);
