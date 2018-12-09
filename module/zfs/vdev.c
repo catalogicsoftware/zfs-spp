@@ -667,14 +667,29 @@ vdev_alloc(spa_t *spa, vdev_t **vdp, nvlist_t *nv, vdev_t *parent, uint_t id,
 void
 vdev_free(vdev_t *vd)
 {
-	int c, t;
+	int c;
 	spa_t *spa = vd->vdev_spa;
+	uint64_t t, txg;
+	metaslab_t *msp;
 
 	/*
 	 * vdev_free() implies closing the vdev first.  This is simpler than
 	 * trying to ensure complicated semantics for all callers.
 	 */
 	vdev_close(vd);
+
+	/* If the pool is being forcibly exported, clean up any stragglers. */
+	if (spa_exiting_any(spa)) {
+		for (t = 0, txg = spa_syncing_txg(spa) + 1; t < TXG_SIZE; ) {
+			msp = txg_list_remove(&vd->vdev_ms_list, t);
+			if (msp == NULL) {
+				t++;
+				continue;
+			}
+			VERIFY3U(t, ==, txg & TXG_MASK);
+			/* Metaslab already destroyed, nothing to do. */
+		}
+	}
 
 	ASSERT(!list_link_active(&vd->vdev_config_dirty_node));
 	ASSERT(!list_link_active(&vd->vdev_state_dirty_node));
@@ -695,6 +710,9 @@ vdev_free(vdev_t *vd)
 		vdev_metaslab_fini(vd);
 		metaslab_group_destroy(vd->vdev_mg);
 	}
+
+	if (spa_exiting_any(spa))
+		vdev_clear_stats(vd);
 
 	ASSERT0(vd->vdev_stat.vs_space);
 	ASSERT0(vd->vdev_stat.vs_dspace);
@@ -2165,6 +2183,16 @@ vdev_dtl_sync(vdev_t *vd, uint64_t txg)
 	dmu_tx_t *tx;
 	uint64_t object = space_map_object(vd->vdev_dtl_sm);
 
+	/*
+	 * The pool is being forcibly exported.  Just discard everything.
+	 */
+	if (spa_exiting(spa)) {
+		mutex_enter(&vd->vdev_dtl_lock);
+		range_tree_vacate(rt, NULL, NULL);
+		mutex_exit(&vd->vdev_dtl_lock);
+		return;
+	}
+
 	ASSERT(!vd->vdev_ishole);
 	ASSERT(vd->vdev_ops->vdev_op_leaf);
 
@@ -3193,6 +3221,11 @@ vdev_stat_update(zio_t *zio, uint64_t psize)
 	 */
 	if (zio->io_vd == NULL && (zio->io_flags & ZIO_FLAG_DONT_PROPAGATE))
 		return;
+
+	if (vd == NULL && spa_exiting_any(spa)) {
+		/* Forced export resulted in partially constructed I/O. */
+		return;
+	}
 
 	mutex_enter(&vd->vdev_stat_lock);
 	if (type == ZIO_TYPE_READ && !vdev_is_dead(vd)) {

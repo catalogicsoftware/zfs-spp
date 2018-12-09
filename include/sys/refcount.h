@@ -47,6 +47,8 @@ typedef struct reference {
 	void *ref_holder;
 	uint64_t ref_number;
 	uint8_t *ref_removed;
+	const char *ref_file;
+	size_t ref_line;
 } reference_t;
 
 typedef struct refcount {
@@ -70,9 +72,15 @@ void zfs_refcount_destroy(zfs_refcount_t *);
 void zfs_refcount_destroy_many(zfs_refcount_t *, uint64_t);
 int zfs_refcount_is_zero(zfs_refcount_t *);
 int64_t zfs_refcount_count(zfs_refcount_t *);
-int64_t zfs_refcount_add(zfs_refcount_t *, void *);
+int64_t _zfs_refcount_add(zfs_refcount_t *, void *,
+    const char *file, size_t line);
+#define	zfs_refcount_add(rc, holder_tag)	\
+	_zfs_refcount_add(rc, holder_tag, __FILE__, __LINE__)
 int64_t zfs_refcount_remove(zfs_refcount_t *, void *);
-int64_t zfs_refcount_add_many(zfs_refcount_t *, uint64_t, void *);
+int64_t _zfs_refcount_add_many(zfs_refcount_t *, uint64_t, void *,
+    const char *file, size_t line);
+#define	zfs_refcount_add_many(rc, number, holder_tag)	\
+	_zfs_refcount_add_many(rc, number, holder_tag, __FILE__, __LINE__)
 int64_t zfs_refcount_remove_many(zfs_refcount_t *, uint64_t, void *);
 void zfs_refcount_transfer(zfs_refcount_t *, zfs_refcount_t *);
 void zfs_refcount_transfer_ownership(zfs_refcount_t *, void *, void *);

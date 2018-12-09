@@ -570,7 +570,11 @@ zil_create(zilog_t *zilog)
 	 */
 	if (BP_IS_HOLE(&blk) || BP_SHOULD_BYTESWAP(&blk)) {
 		tx = dmu_tx_create(zilog->zl_os);
-		VERIFY(dmu_tx_assign(tx, TXG_WAIT) == 0);
+		error = dmu_tx_assign(tx, TXG_WAIT);
+		if (error != 0) {
+			dmu_tx_abort(tx);
+			return (NULL);
+		}
 		dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx);
 		txg = dmu_tx_get_txg(tx);
 
@@ -624,6 +628,7 @@ zil_destroy(zilog_t *zilog, boolean_t keep_first)
 	lwb_t *lwb;
 	dmu_tx_t *tx;
 	uint64_t txg;
+	int error;
 
 	/*
 	 * Wait for any previous destroy to complete.
@@ -636,7 +641,11 @@ zil_destroy(zilog_t *zilog, boolean_t keep_first)
 		return;
 
 	tx = dmu_tx_create(zilog->zl_os);
-	VERIFY(dmu_tx_assign(tx, TXG_WAIT) == 0);
+	error = dmu_tx_assign(tx, TXG_WAIT);
+	if (error != 0) {
+		dmu_tx_abort(tx);
+		return;
+	}
 	dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx);
 	txg = dmu_tx_get_txg(tx);
 
@@ -1016,7 +1025,10 @@ zil_lwb_write_start(zilog_t *zilog, lwb_t *lwb)
 	 * should not be subject to the dirty data based delays. We
 	 * use TXG_NOTHROTTLE to bypass the delay mechanism.
 	 */
-	VERIFY0(dmu_tx_assign(tx, TXG_WAIT | TXG_NOTHROTTLE));
+	if (dmu_tx_assign(tx, TXG_WAIT | TXG_NOTHROTTLE) != 0) {
+		dmu_tx_abort(tx);
+		return (NULL);
+	}
 
 	dsl_dataset_dirty(dmu_objset_ds(zilog->zl_os), tx);
 	txg = dmu_tx_get_txg(tx);
@@ -1678,6 +1690,12 @@ zil_commit(zilog_t *zilog, uint64_t foid)
 	if (zilog->zl_sync == ZFS_SYNC_DISABLED)
 		return;
 
+	/*
+	 * If the objset is being forced to exit, there's nothing more to do.
+	 */
+	if (dmu_objset_exiting(zilog->zl_os))
+		return;
+
 	ZIL_STAT_BUMP(zil_commit_count);
 
 	/* move the async itxs for the foid to the sync queues */
@@ -1961,13 +1979,16 @@ zil_close(zilog_t *zilog)
 	if (lwb != NULL)
 		txg = lwb->lwb_max_txg;
 	mutex_exit(&zilog->zl_lock);
-	if (txg)
-		txg_wait_synced(zilog->zl_dmu_pool, txg);
 
-	if (zilog_is_dirty(zilog))
-		zfs_dbgmsg("zil (%p) is dirty, txg %llu", zilog, txg);
-	if (txg < spa_freeze_txg(zilog->zl_spa))
-		VERIFY(!zilog_is_dirty(zilog));
+	if (!dmu_objset_exiting(zilog->zl_os)) {
+		if (txg)
+			txg_wait_synced(zilog->zl_dmu_pool, txg);
+
+		if (zilog_is_dirty(zilog))
+			zfs_dbgmsg("zil (%p) is dirty, txg %llu", zilog, txg);
+		if (txg < spa_freeze_txg(zilog->zl_spa))
+			VERIFY(!zilog_is_dirty(zilog));
+	}
 
 	taskq_destroy(zilog->zl_clean_taskq);
 	zilog->zl_clean_taskq = NULL;

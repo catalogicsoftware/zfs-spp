@@ -1834,16 +1834,21 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 	dsl_scan_sync_state(scn, tx);
 }
 
-/*
- * This will start a new scan, or restart an existing one.
- */
-void
+/* start a new scan, or restart an existing one. */
+int
 dsl_resilver_restart(dsl_pool_t *dp, uint64_t txg)
 {
+	int error;
+
+
 	if (txg == 0) {
 		dmu_tx_t *tx;
 		tx = dmu_tx_create_dd(dp->dp_mos_dir);
-		VERIFY(0 == dmu_tx_assign(tx, TXG_WAIT));
+		error = dmu_tx_assign(tx, TXG_WAIT);
+		if (error != 0) {
+			dmu_tx_abort(tx);
+			return (error);
+		}
 
 		txg = dmu_tx_get_txg(tx);
 		dp->dp_scan->scn_restart_txg = txg;
@@ -1851,7 +1856,8 @@ dsl_resilver_restart(dsl_pool_t *dp, uint64_t txg)
 	} else {
 		dp->dp_scan->scn_restart_txg = txg;
 	}
-	zfs_dbgmsg("restarting resilver txg=%llu", txg);
+	zfs_dbgmsg("restarting resilver txg=%llu", (longlong_t)txg);
+	return (0);
 }
 
 boolean_t

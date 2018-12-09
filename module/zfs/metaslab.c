@@ -303,6 +303,16 @@ metaslab_class_get_dspace(metaslab_class_t *mc)
 }
 
 void
+metaslab_class_force_discard(metaslab_class_t *mc)
+{
+
+	mc->mc_alloc = 0;
+	mc->mc_deferred = 0;
+	mc->mc_space = 0;
+	mc->mc_dspace = 0;
+}
+
+void
 metaslab_class_histogram_verify(metaslab_class_t *mc)
 {
 	vdev_t *rvd = mc->mc_spa->spa_root_vdev;
@@ -1480,6 +1490,16 @@ metaslab_fini(metaslab_t *msp)
 	metaslab_group_remove(mg, msp);
 
 	mutex_enter(&msp->ms_lock);
+	if (spa_exiting_any(mg->mg_vd->vdev_spa)) {
+		/* Catch-all cleanup as required for force export. */
+		range_tree_vacate(msp->ms_tree, NULL, NULL);
+		range_tree_vacate(msp->ms_freeingtree, NULL, NULL);
+		range_tree_vacate(msp->ms_freedtree, NULL, NULL);
+		for (int t = 0; t < TXG_DEFER_SIZE; t++)
+			range_tree_vacate(msp->ms_defertree[t], NULL, NULL);
+		msp->ms_deferspace = 0;
+	}
+
 	VERIFY(msp->ms_group == NULL);
 	vdev_space_update(mg->mg_vd, -space_map_allocated(msp->ms_sm),
 	    0, -msp->ms_size);
@@ -2222,10 +2242,25 @@ metaslab_sync(metaslab_t *msp, uint64_t txg)
 	ASSERT3P(msp->ms_freedtree, !=, NULL);
 
 	/*
-	 * Normally, we don't want to process a metaslab if there
-	 * are no allocations or frees to perform. However, if the metaslab
-	 * is being forced to condense and it's loaded, we need to let it
-	 * through.
+	 * The pool is being forcibly exported.  Just discard everything.
+	 */
+	if (spa_exiting_any(spa)) {
+		mutex_enter(&msp->ms_lock);
+		range_tree_vacate(alloctree, NULL, NULL);
+		range_tree_vacate(msp->ms_tree, NULL, NULL);
+		range_tree_vacate(msp->ms_freeingtree, NULL, NULL);
+		range_tree_vacate(msp->ms_freedtree, NULL, NULL);
+		for (int t = 0; t < TXG_DEFER_SIZE; t++) {
+			range_tree_vacate(msp->ms_defertree[t], NULL, NULL);
+		}
+		mutex_exit(&msp->ms_lock);
+		return;
+	}
+
+	/*
+	 * Normally, we don't want to process a metaslab if there are no
+	 * allocations or frees to perform. However, if the metaslab is being
+	 * forced to condense and it's loaded, we need to let it through.
 	 */
 	if (range_tree_space(alloctree) == 0 &&
 	    range_tree_space(msp->ms_freeingtree) == 0 &&
@@ -2233,7 +2268,7 @@ metaslab_sync(metaslab_t *msp, uint64_t txg)
 		return;
 
 
-	VERIFY(txg <= spa_final_dirty_txg(spa));
+	spa_verify_dirty_txg(spa, txg);
 
 	/*
 	 * The only state that can actually be changing concurrently with
@@ -2448,7 +2483,7 @@ metaslab_sync_done(metaslab_t *msp, uint64_t txg)
 	msp->ms_deferspace += defer_delta;
 	ASSERT3S(msp->ms_deferspace, >=, 0);
 	ASSERT3S(msp->ms_deferspace, <=, msp->ms_size);
-	if (msp->ms_deferspace != 0) {
+	if (msp->ms_deferspace != 0 && !spa_exiting_any(spa)) {
 		/*
 		 * Keep syncing this metaslab until all deferred frees
 		 * are back in circulation.
