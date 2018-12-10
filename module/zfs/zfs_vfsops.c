@@ -1449,6 +1449,7 @@ static int
 zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 {
 	znode_t	*zp;
+	kthread_t *killer = NULL;
 
 	/*
 	 * If someone has not already unmounted this file system,
@@ -1476,6 +1477,7 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 			if (++round > 1 && !unmounting)
 				break;
 		}
+		killer = zfsvfs->z_os->os_killer;
 	}
 
 	rrm_enter(&zfsvfs->z_teardown_lock, RW_WRITER, FTAG);
@@ -1508,6 +1510,10 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	 * or a reopen of z_os failed then just bail out now.
 	 */
 	if (!unmounting && (zfsvfs->z_unmounted || zfsvfs->z_os == NULL)) {
+		if (killer == curthread) {
+			zfsvfs->z_unmounted = B_FALSE;
+			dmu_objset_shutdown_unregister(zfsvfs->z_os);
+		}
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
 		rrm_exit(&zfsvfs->z_teardown_lock, FTAG);
 		return (SET_ERROR(EIO));
@@ -1558,6 +1564,9 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	/*
 	 * Evict cached data
 	 */
+	if (killer == curthread)
+		dmu_objset_shutdown_unregister(zfsvfs->z_os);
+
 	if (!dmu_objset_exiting(zfsvfs->z_os) &&
 	    dsl_dataset_is_dirty(dmu_objset_ds(zfsvfs->z_os)) &&
 	    !zfs_is_readonly(zfsvfs))

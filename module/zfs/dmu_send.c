@@ -956,7 +956,8 @@ send_register(dsl_pool_t *dp, dsl_dataset_t *ds, dmu_sendarg_t *dsp,
 	if (err == 0) {
 		/* Will be released in send_unregister */
 		if (owned) {
-			err = dsl_dataset_own_obj(dp, ds->ds_object, tag, &nds);
+			err = dsl_dataset_own_obj(dp, ds->ds_object,
+			    tag, &nds);
 			if (err == 0)
 				ASSERT3P(nds, ==, ds);
 		} else
