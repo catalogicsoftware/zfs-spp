@@ -3397,6 +3397,8 @@ dmu_recv_end_check(void *arg, dmu_tx_t *tx)
 	dsl_pool_t *dp = dmu_tx_pool(tx);
 	int error;
 
+	ASSERT3P(drc->drc_ds->ds_receiver, !=, NULL);
+
 	if (!drc->drc_newfs) {
 		dsl_dataset_t *origin_head;
 
