@@ -42,8 +42,9 @@ struct dmu_replay_record;
 
 extern const char *recv_clone_name;
 
-int dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
-    boolean_t embedok, boolean_t large_block_ok, boolean_t compressok,
+int dmu_send(dsl_pool_t *dp, struct dsl_dataset *ds, struct dsl_dataset *fromds,
+    char *fromzb, boolean_t embedok, boolean_t large_block_ok,
+    boolean_t compressok,
     uint64_t resumeobj, uint64_t resumeoff,
     int outfd, void *tag);
 int dmu_send_estimate(struct dsl_dataset *ds, struct dsl_dataset *fromds,

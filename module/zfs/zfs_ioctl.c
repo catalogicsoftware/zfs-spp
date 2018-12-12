@@ -5751,7 +5751,7 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
 	}
 
 	return dmu_send(dp, ds, fromds, fromzb, embedok, largeblockok,
-	    compressok, rawok, resumeobj, resumeoff, fd, FTAG);
+	    compressok, resumeobj, resumeoff, fd, FTAG);
 
 out:
 	if (ds != NULL)

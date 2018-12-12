@@ -490,7 +490,6 @@ dump_dnode(dmu_sendarg_t *dsp, uint64_t object, dnode_phys_t *dnp)
 {
 	dmu_replay_record_t *drr = &dsp->dsa_drr;
 	struct drr_object *drro = &(drr->drr_u.drr_object);
-	int bonuslen;
 
 	if (object < dsp->dsa_resume_object) {
 		/*
@@ -901,8 +900,7 @@ dmu_send_init(struct send_thread_arg *to_arg, dsl_pool_t *dp,
 	}
 
 	/* handle features that require a DRR_BEGIN payload */
-	if (featureflags &
-	    (DMU_BACKUP_FEATURE_RESUMING | DMU_BACKUP_FEATURE_RAW)) {
+	if (featureflags & DMU_BACKUP_FEATURE_RESUMING) {
 		nvlist_t *nvl = fnvlist_alloc();
 
 		if (featureflags & DMU_BACKUP_FEATURE_RESUMING) {
@@ -975,7 +973,7 @@ send_register(dsl_pool_t *dp, dsl_dataset_t *ds, dmu_sendarg_t *dsp,
 int
 dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
     boolean_t embedok, boolean_t large_block_ok,
-    boolean_t compressok, boolean_t rawok,
+    boolean_t compressok,
     uint64_t resumeobj, uint64_t resumeoff,
     int outfd, void *tag)
 {
@@ -988,7 +986,6 @@ dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
 	struct send_block_record *to_data;
 	zfs_bookmark_phys_t zb;
 	boolean_t is_clone = B_FALSE;
-	ds_hold_flags_t dsflags = (rawok) ? 0 : DS_HOLD_FLAG_DECRYPT;
 	char *payload;
 	loff_t off;
 	vnode_t *vp;
@@ -1018,7 +1015,7 @@ dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
 	err = dmu_send_init(&to_arg, dp, ds, fromds, outfd,
 	    resumeobj, resumeoff,
 	    (fromds != NULL || fromzb != NULL) ? &zb : NULL, is_clone,
-	    embedok, large_block_ok, compressok, rawok, &payload, &dsp);
+	    embedok, large_block_ok, compressok, &payload, &dsp);
 	if (fromds != NULL)
 		dsl_dataset_rele(fromds, tag);
 	if (err != 0) {
@@ -1097,9 +1094,9 @@ dmu_send(dsl_pool_t *dp, dsl_dataset_t *ds, dsl_dataset_t *fromds, char *fromzb,
 
 errout:
 	if (!owned)
-		dsl_dataset_rele_flags(ds, dsflags, tag);
+		dsl_dataset_rele(ds, tag);
 	else
-		dsl_dataset_disown(ds, dsflags, tag);
+		dsl_dataset_disown(ds, tag);
 
 regfail:
 	vp = dsp->dsa_fp->f_vnode;
@@ -1108,148 +1105,12 @@ regfail:
 	releasef(dsp->dsa_outfd);
 	kmem_free(dsp, sizeof (dmu_sendarg_t));
 
-	dsl_dataset_long_rele(to_ds, FTAG);
-
-	return (err);
-}
-
-int
-dmu_send_obj(const char *pool, uint64_t tosnap, uint64_t fromsnap,
-    boolean_t embedok, boolean_t large_block_ok, boolean_t compressok,
-    int outfd, vnode_t *vp, offset_t *off)
-{
-	dsl_pool_t *dp;
-	dsl_dataset_t *ds;
-	dsl_dataset_t *fromds = NULL;
-	int err;
-
-	err = dsl_pool_hold(pool, FTAG, &dp);
-	if (err != 0)
-		return (err);
-
-	err = dsl_dataset_hold_obj(dp, tosnap, FTAG, &ds);
-	if (err != 0) {
-		dsl_pool_rele(dp, FTAG);
-		return (err);
-	}
-
-	if (fromsnap != 0) {
-		zfs_bookmark_phys_t zb;
-		boolean_t is_clone;
-
-		err = dsl_dataset_hold_obj(dp, fromsnap, FTAG, &fromds);
-		if (err != 0) {
-			dsl_dataset_rele(ds, FTAG);
-			dsl_pool_rele(dp, FTAG);
-			return (err);
-		}
-		if (!dsl_dataset_is_before(ds, fromds, 0))
-			err = SET_ERROR(EXDEV);
-		zb.zbm_creation_time =
-		    dsl_dataset_phys(fromds)->ds_creation_time;
-		zb.zbm_creation_txg = dsl_dataset_phys(fromds)->ds_creation_txg;
-		zb.zbm_guid = dsl_dataset_phys(fromds)->ds_guid;
-		is_clone = (fromds->ds_dir != ds->ds_dir);
-		dsl_dataset_rele(fromds, FTAG);
-		err = dmu_send_impl(FTAG, dp, ds, &zb, is_clone,
-		    embedok, large_block_ok, compressok, outfd, 0, 0, vp, off);
-	} else {
-		err = dmu_send_impl(FTAG, dp, ds, NULL, B_FALSE,
-		    embedok, large_block_ok, compressok, outfd, 0, 0, vp, off);
-	}
-	dsl_dataset_rele(ds, FTAG);
-	return (err);
-}
-
-int
-dmu_send(const char *tosnap, const char *fromsnap, boolean_t embedok,
-    boolean_t large_block_ok, boolean_t compressok, int outfd,
-    uint64_t resumeobj, uint64_t resumeoff,
-    vnode_t *vp, offset_t *off)
-{
-	dsl_pool_t *dp;
-	dsl_dataset_t *ds;
-	int err;
-	boolean_t owned = B_FALSE;
-
-	if (fromsnap != NULL && strpbrk(fromsnap, "@#") == NULL)
-		return (SET_ERROR(EINVAL));
-
-	err = dsl_pool_hold(tosnap, FTAG, &dp);
-	if (err != 0)
-		return (err);
-
-	if (strchr(tosnap, '@') == NULL && spa_writeable(dp->dp_spa)) {
-		/*
-		 * We are sending a filesystem or volume.  Ensure
-		 * that it doesn't change by owning the dataset.
-		 */
-		err = dsl_dataset_own(dp, tosnap, FTAG, &ds);
-		owned = B_TRUE;
-	} else {
-		err = dsl_dataset_hold(dp, tosnap, FTAG, &ds);
-	}
-	if (err != 0) {
-		dsl_pool_rele(dp, FTAG);
-		return (err);
-	}
-
-	if (fromsnap != NULL) {
-		zfs_bookmark_phys_t zb;
-		boolean_t is_clone = B_FALSE;
-		int fsnamelen = strchr(tosnap, '@') - tosnap;
-
-		/*
-		 * If the fromsnap is in a different filesystem, then
-		 * mark the send stream as a clone.
-		 */
-		if (strncmp(tosnap, fromsnap, fsnamelen) != 0 ||
-		    (fromsnap[fsnamelen] != '@' &&
-		    fromsnap[fsnamelen] != '#')) {
-			is_clone = B_TRUE;
-		}
-
-		if (strchr(fromsnap, '@')) {
-			dsl_dataset_t *fromds;
-			err = dsl_dataset_hold(dp, fromsnap, FTAG, &fromds);
-			if (err == 0) {
-				if (!dsl_dataset_is_before(ds, fromds, 0))
-					err = SET_ERROR(EXDEV);
-				zb.zbm_creation_time =
-				    dsl_dataset_phys(fromds)->ds_creation_time;
-				zb.zbm_creation_txg =
-				    dsl_dataset_phys(fromds)->ds_creation_txg;
-				zb.zbm_guid = dsl_dataset_phys(fromds)->ds_guid;
-				is_clone = (ds->ds_dir != fromds->ds_dir);
-				dsl_dataset_rele(fromds, FTAG);
-			}
-		} else {
-			err = dsl_bookmark_lookup(dp, fromsnap, ds, &zb);
-		}
-		if (err != 0) {
-			dsl_dataset_rele(ds, FTAG);
-			dsl_pool_rele(dp, FTAG);
-			return (err);
-		}
-		err = dmu_send_impl(FTAG, dp, ds, &zb, is_clone,
-		    embedok, large_block_ok, compressok,
-		    outfd, resumeobj, resumeoff, vp, off);
-	} else {
-		err = dmu_send_impl(FTAG, dp, ds, NULL, B_FALSE,
-		    embedok, large_block_ok, compressok,
-		    outfd, resumeobj, resumeoff, vp, off);
-	}
-	if (owned)
-		dsl_dataset_disown(ds, FTAG);
-	else
-		dsl_dataset_rele(ds, FTAG);
-=======
+	dsl_dataset_long_rele(ds, FTAG);
 #else /* _KERNEL */
 	fprintf(stderr, "%s: returning EOPNOTSUPP\n", __func__);
 	err = EOPNOTSUPP;
 #endif
 
->>>>>>> d41523d... dmu_send: refactor dmu_send{,_impl,_obj,...}.
 	return (err);
 }
 
@@ -1419,13 +1280,13 @@ typedef struct dmu_recv_begin_arg {
 } dmu_recv_begin_arg_t;
 
 static int
-recv_own(dsl_pool_t *dp, uint64_t dsobj, ds_hold_flags_t dsflags,
+recv_own(dsl_pool_t *dp, uint64_t dsobj,
     dmu_recv_cookie_t *drc, dsl_dataset_t **dsp, objset_t **osp)
 {
 	int error;
 	dsl_dataset_t *ds;
 
-	error = dsl_dataset_own_obj(dp, dsobj, dsflags, drc, &ds);
+	error = dsl_dataset_own_obj(dp, dsobj, drc, &ds);
 	if (error != 0)
 		return (error);
 	ds->ds_receiver = drc;
@@ -1682,6 +1543,7 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 	struct drr_begin *drrb = drba->drba_cookie->drc_drrb;
 	const char *tofs = drba->drba_cookie->drc_tofs;
 	dsl_dataset_t *ds, *newds;
+	objset_t *os;
 	uint64_t dsobj;
 	int error;
 	uint64_t crflags = 0;
@@ -1907,6 +1769,7 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
 	dsl_pool_t *dp = dmu_tx_pool(tx);
 	const char *tofs = drba->drba_cookie->drc_tofs;
 	dsl_dataset_t *ds;
+	objset_t *os;
 	uint64_t dsobj;
 	/* 6 extra bytes for /%recv */
 	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
@@ -2734,7 +2597,7 @@ dmu_recv_cleanup_ds(dmu_recv_cookie_t *drc)
 		char name[ZFS_MAX_DATASET_NAME_LEN];
 		dsl_dataset_name(drc->drc_ds, name);
 		recv_disown(ds, drc);
-		dsl_dataset_disown(drc->drc_ds, dmu_recv_tag);
+		dsl_dataset_disown(drc->drc_ds, drc);
 		(void) dsl_destroy_head(name);
 	}
 }
@@ -3500,8 +3363,6 @@ dmu_recv_end_check(void *arg, dmu_tx_t *tx)
 	dmu_recv_cookie_t *drc = arg;
 	dsl_pool_t *dp = dmu_tx_pool(tx);
 	int error;
-
-	ASSERT3P(drc->drc_ds->ds_owner, ==, dmu_recv_tag);
 
 	if (!drc->drc_newfs) {
 		dsl_dataset_t *origin_head;
