@@ -2630,7 +2630,6 @@ dmu_recv_cleanup_ds(dmu_recv_cookie_t *drc)
 		char name[ZFS_MAX_DATASET_NAME_LEN];
 		dsl_dataset_name(drc->drc_ds, name);
 		recv_disown(ds, drc);
-		dsl_dataset_disown(drc->drc_ds, drc);
 		(void) dsl_destroy_head(name);
 	}
 }
