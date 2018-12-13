@@ -1564,14 +1564,14 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	/*
 	 * Evict cached data
 	 */
-	if (killer == curthread)
-		dmu_objset_shutdown_unregister(zfsvfs->z_os);
-
 	if (!dmu_objset_exiting(zfsvfs->z_os) &&
 	    dsl_dataset_is_dirty(dmu_objset_ds(zfsvfs->z_os)) &&
 	    !zfs_is_readonly(zfsvfs))
 		txg_wait_synced(dmu_objset_pool(zfsvfs->z_os), 0);
 	dmu_objset_evict_dbufs(zfsvfs->z_os);
+
+	if (killer == curthread)
+		dmu_objset_shutdown_unregister(zfsvfs->z_os);
 
 	return (0);
 }
