@@ -1564,7 +1564,7 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	/*
 	 * Evict cached data
 	 */
-	if (!dmu_objset_exiting(zfsvfs->z_os) &&
+	if (!spa_suspended(zfsvfs->z_os->os_spa) &&
 	    dsl_dataset_is_dirty(dmu_objset_ds(zfsvfs->z_os)) &&
 	    !zfs_is_readonly(zfsvfs))
 		txg_wait_synced(dmu_objset_pool(zfsvfs->z_os), 0);
