@@ -47,6 +47,7 @@ int dmu_send(dsl_pool_t **dp, struct dsl_dataset *ds, struct dsl_dataset *fromds
     boolean_t compressok,
     uint64_t resumeobj, uint64_t resumeoff,
     int outfd, void *tag);
+int dmu_send_close(struct dsl_dataset *ds, void *dsa);
 int dmu_send_estimate(struct dsl_dataset *ds, struct dsl_dataset *fromds,
     boolean_t stream_compressed, uint64_t *sizep);
 int dmu_send_estimate_from_txg(struct dsl_dataset *ds, uint64_t fromtxg,
@@ -55,6 +56,7 @@ int dmu_send_estimate_from_txg(struct dsl_dataset *ds, uint64_t fromtxg,
 typedef struct dmu_recv_cookie {
 	struct dsl_dataset *drc_ds;
 	file_t *drc_fp;
+	kthread_t *drc_initiator;
 	struct dmu_replay_record *drc_drr_begin;
 	struct drr_begin *drc_drrb;
 	const char *drc_tofs;
@@ -67,6 +69,8 @@ typedef struct dmu_recv_cookie {
 	struct avl_tree *drc_guid_to_ds_map;
 	zio_cksum_t drc_cksum;
 	uint64_t drc_newsnapobj;
+	unsigned int drc_flags;
+	void *drc_rwa;
 	void *drc_owner;
 	cred_t *drc_cred;
 } dmu_recv_cookie_t;
@@ -77,6 +81,7 @@ int dmu_recv_begin(char *tofs, char *tosnap,
     dmu_recv_cookie_t *drc);
 int dmu_recv_stream(dmu_recv_cookie_t *drc, struct vnode *vp, offset_t *voffp,
     int cleanup_fd, uint64_t *action_handlep);
+int dmu_recv_close(struct dsl_dataset *ds);
 int dmu_recv_end(dmu_recv_cookie_t *drc, void *owner);
 boolean_t dmu_objset_is_receiving(objset_t *os);
 
