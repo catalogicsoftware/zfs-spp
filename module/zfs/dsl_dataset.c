@@ -482,7 +482,7 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 				    sizeof (ds->ds_bookmarks), 1,
 				    &ds->ds_bookmarks);
 				if (zaperr != ENOENT)
-					VERIFY0(zaperr);
+					err = zaperr;
 			}
 		} else {
 			if (zfs_flags & ZFS_DEBUG_SNAPNAMES)
