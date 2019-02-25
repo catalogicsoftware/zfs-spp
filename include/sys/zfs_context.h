@@ -244,6 +244,7 @@ typedef struct kthread {
 #define	thread_create(stk, stksize, func, arg, len, pp, state, pri)	\
 	zk_thread_create(stk, stksize, (thread_func_t)func, arg,	\
 	    len, NULL, state, pri, PTHREAD_CREATE_DETACHED)
+#define	thread_signal(t, s) pthread_kill((pthread_t)t, s)
 #define	thread_join(t)			zk_thread_join(t)
 #define	newproc(f, a, cid, pri, ctp, pid)	(ENOSYS)
 
