@@ -388,9 +388,12 @@ dsl_dataset_try_add_ref(dsl_pool_t *dp, dsl_dataset_t *ds, void *tag)
 	return (result);
 }
 
-int
-dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
-    dsl_dataset_t **dsp)
+/* Return error if the dataset is not already open. */
+#define	DS_MUST_BE_OPEN	(1U << 0)
+
+static int
+dsl_dataset_hold_obj_flags(dsl_pool_t *dp, uint64_t dsobj, void *tag,
+    unsigned int dsh_flags, dsl_dataset_t **dsp)
 {
 	objset_t *mos = dp->dp_meta_objset;
 	dmu_buf_t *dbuf;
@@ -413,6 +416,11 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 
 	ds = dmu_buf_get_user(dbuf);
 	if (ds == NULL) {
+		if (dsh_flags & DS_MUST_BE_OPEN) {
+			dmu_buf_rele(dbuf, tag);
+			return (SET_ERROR(ENXIO));
+		}
+
 		dsl_dataset_t *winner = NULL;
 
 		ds = kmem_zalloc(sizeof (dsl_dataset_t), KM_SLEEP);
@@ -552,6 +560,14 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 	    dp->dp_origin_snap == NULL || ds == dp->dp_origin_snap);
 	*dsp = ds;
 	return (0);
+}
+
+int
+dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
+    dsl_dataset_t **dsp)
+{
+
+	return dsl_dataset_hold_obj_flags(dp, dsobj, tag, 0, dsp);
 }
 
 int
@@ -746,7 +762,8 @@ dsl_dataset_active_foreach(spa_t *spa, int func(dsl_dataset_t *, void *), void *
 			if (!DN_SLOT_IS_PTR(dnh->dnh_dnode))
 				continue;
 
-			error = dsl_dataset_hold_obj(dp, dsobj + i, FTAG, &ds);
+			error = dsl_dataset_hold_obj_flags(dp, dsobj + i,
+			    FTAG, DS_MUST_BE_OPEN, &ds);
 			if (error != 0)
 				continue;
 
