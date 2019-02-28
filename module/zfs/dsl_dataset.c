@@ -747,6 +747,7 @@ dsl_dataset_active_foreach(spa_t *spa, int func(dsl_dataset_t *, void *), void *
 	 *   - Call the callback, quit if returns non zero,
 	 *   - Rele the dataset either way.
 	 */
+	dsl_pool_config_enter(dp, FTAG);
 	rw_enter(&mdn->dn_struct_rwlock, RW_READER);
 	for (blkid = dsobj = 0;
 	    ret == 0 && blkid <= mdn->dn_maxblkid;
@@ -781,6 +782,7 @@ skip:
 		dbuf_rele(db, FTAG);
 	}
 	rw_exit(&mdn->dn_struct_rwlock);
+	dsl_pool_config_exit(dp, FTAG);
 
 	return (ret);
 }
