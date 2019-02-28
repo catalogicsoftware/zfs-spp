@@ -388,12 +388,18 @@ dsl_dataset_try_add_ref(dsl_pool_t *dp, dsl_dataset_t *ds, void *tag)
 	return (result);
 }
 
-/* Return error if the dataset is not already open. */
-#define	DS_MUST_BE_OPEN	(1U << 0)
+/* Synchronize signature with zfs-v0.8. */
+typedef enum ds_hold_flags {
+	/* DS_HOLD_FLAG_DECRYPT = 1 << 0, */
+	DS_HOLD_FLAG_MUST_BE_OPEN = 1 << 1, /* dataset must already be open */
+} ds_hold_flags_t;
+
+
+
 
 static int
-dsl_dataset_hold_obj_flags(dsl_pool_t *dp, uint64_t dsobj, void *tag,
-    unsigned int dsh_flags, dsl_dataset_t **dsp)
+dsl_dataset_hold_obj_flags(dsl_pool_t *dp, uint64_t dsobj,
+    ds_hold_flags_t flags, void *tag, dsl_dataset_t **dsp)
 {
 	objset_t *mos = dp->dp_meta_objset;
 	dmu_buf_t *dbuf;
@@ -416,7 +422,7 @@ dsl_dataset_hold_obj_flags(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 
 	ds = dmu_buf_get_user(dbuf);
 	if (ds == NULL) {
-		if (dsh_flags & DS_MUST_BE_OPEN) {
+		if (flags & DS_HOLD_FLAG_MUST_BE_OPEN) {
 			dmu_buf_rele(dbuf, tag);
 			return (SET_ERROR(ENXIO));
 		}
@@ -567,7 +573,7 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
     dsl_dataset_t **dsp)
 {
 
-	return dsl_dataset_hold_obj_flags(dp, dsobj, tag, 0, dsp);
+	return dsl_dataset_hold_obj_flags(dp, dsobj, 0, tag, dsp);
 }
 
 int
@@ -763,7 +769,7 @@ dsl_dataset_active_foreach(spa_t *spa, int func(dsl_dataset_t *, void *), void *
 				continue;
 
 			error = dsl_dataset_hold_obj_flags(dp, dsobj + i,
-			    FTAG, DS_MUST_BE_OPEN, &ds);
+			    DS_HOLD_FLAG_MUST_BE_OPEN, FTAG, &ds);
 			if (error != 0)
 				continue;
 
