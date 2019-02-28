@@ -1871,6 +1871,9 @@ zio_reexecute(zio_t *pio)
 		pio->io_pipeline = pio->io_orig_pipeline;
 		pio->io_error = 0;
 		pio->io_reexecute = 0;
+
+		if (IO_IS_ALLOCATING(pio))
+			BP_ZERO(pio->io_bp);
 	}
 	pio->io_flags |= ZIO_FLAG_REEXECUTED;
 	pio->io_pipeline_trace = 0;
@@ -1878,9 +1881,6 @@ zio_reexecute(zio_t *pio)
 		pio->io_state[w] = 0;
 	for (c = 0; c < ZIO_CHILD_TYPES; c++)
 		pio->io_child_error[c] = 0;
-
-	if (IO_IS_ALLOCATING(pio))
-		BP_ZERO(pio->io_bp);
 
 	/*
 	 * As we reexecute pio's children, new children could be created.
