@@ -202,6 +202,8 @@ usage(void)
 	    "dump all read blocks into specified directory\n");
 	(void) fprintf(stderr, "        -X attempt extreme rewind (does not "
 	    "work with dataset)\n");
+	(void) fprintf(stderr, "        -Z <path> -- writes blocks to a file in"
+		"blockmap format\n");
 	(void) fprintf(stderr, "Specify an option more than once (e.g. -bb) "
 	    "to make only that option verbose\n");
 	(void) fprintf(stderr, "Default is to dump everything non-verbosely\n");
@@ -773,6 +775,69 @@ dump_metaslab_stats(metaslab_t *msp)
 }
 
 static void
+dump_offset(objset_t *os, space_map_t *sm, FILE *blockmap_file)
+{
+	int c = 64;
+	int entry_size = 17;
+	unsigned char buf[entry_size];
+	uint64_t offset, entry;
+
+	if (sm == NULL)
+		return;
+
+	
+	for (offset = 0; offset < space_map_length(sm);
+	    offset += sizeof (entry)) {
+
+		uint8_t mapshift = sm->sm_shift;
+
+		VERIFY0(dmu_read(os, space_map_object(sm), offset,
+		    sizeof (entry), &entry, DMU_READ_PREFETCH));
+
+		int entry_type;
+		uint64_t entry_off, entry_run;
+
+		if (!SM_DEBUG_DECODE(entry)) {
+			entry_type = (SM_TYPE_DECODE(entry) == SM_ALLOC) ? 1 : 0;
+			entry_off = (SM_OFFSET_DECODE(entry) << mapshift) + sm->sm_start;
+			entry_run = SM_RUN_DECODE(entry) << mapshift;
+			
+			buf[0] = entry_type;
+			for(int i=1; i<entry_size; i++){
+				c -= 8;
+				if (i < 9) {
+					buf[i] = (unsigned char) (entry_off >> c);
+					if (c == 0){
+						c = 64;
+					}
+				} else {
+					buf[i] = (unsigned char) (entry_run >> c);
+				}
+			}
+
+			fwrite(&buf, sizeof(char), entry_size, blockmap_file);
+		}
+	}
+}
+
+
+static void
+dump_offsets(metaslab_t *msp, FILE *blockmap_file)
+{
+	vdev_t *vd = msp->ms_group->mg_vd;
+	spa_t *spa = vd->vdev_spa;
+
+ 	if (dump_opt['d'] > 5 || dump_opt['m'] > 3) {
+		ASSERT(msp->ms_size == (1ULL << vd->vdev_ms_shift));
+
+ 		mutex_enter(&msp->ms_lock);
+		dump_offset(spa->spa_meta_objset, msp->ms_sm,
+			blockmap_file);
+		mutex_exit(&msp->ms_lock);
+	}
+}
+
+static void
 dump_metaslab(metaslab_t *msp)
 {
 	vdev_t *vd = msp->ms_group->mg_vd;
@@ -872,6 +937,43 @@ dump_metaslab_groups(spa_t *spa)
 	else
 		(void) printf("\t%3llu%%\n", (u_longlong_t)fragmentation);
 	dump_histogram(mc->mc_histogram, RANGE_TREE_HISTOGRAM_SIZE, 0);
+}
+
+static void
+dump_blockmap(spa_t *spa, char *blockmap_file_path)
+{
+	vdev_t *vd, *rvd = spa->spa_root_vdev;
+	uint64_t m, c = 0, children = rvd->vdev_children;
+	FILE *blockmap_file = fopen(blockmap_file_path, "wb");
+
+ 	if (!dump_opt['d'] && zopt_objects > 0) {
+		c = zopt_object[0];
+
+ 		if (c >= children)
+			(void) fatal("bad vdev id: %llu", (u_longlong_t)c);
+
+ 		if (zopt_objects > 1) {
+			vd = rvd->vdev_child[c];
+
+ 			for (m = 1; m < zopt_objects; m++) {
+				if (zopt_object[m] < vd->vdev_ms_count)
+					dump_offsets(
+					    vd->vdev_ms[zopt_object[m]],
+					    blockmap_file);
+			}
+			fclose(blockmap_file);
+			return;
+		}
+		children = c + 1;
+	}
+	for (; c < children; c++) {
+		vd = rvd->vdev_child[c];
+
+ 		for (m = 0; m < vd->vdev_ms_count; m++)
+			dump_offsets(vd->vdev_ms[m],
+				blockmap_file);
+	}
+	fclose(blockmap_file);
 }
 
 static void
@@ -3676,7 +3778,7 @@ zdb_set_skip_mmp(char *target)
 }
 
 static void
-dump_zpool(spa_t *spa)
+dump_zpool(spa_t *spa, char *blockmap_file_path)
 {
 	dsl_pool_t *dp = spa_get_dsl(spa);
 	int rc = 0;
@@ -3700,8 +3802,14 @@ dump_zpool(spa_t *spa)
 	if (dump_opt['D'])
 		dump_all_ddts(spa);
 
-	if (dump_opt['d'] > 2 || dump_opt['m'])
-		dump_metaslabs(spa);
+	if (dump_opt['d'] > 2 || dump_opt['m']) {
+		if (blockmap_file_path != NULL) {
+			dump_blockmap(spa, blockmap_file_path);
+		} else {
+			dump_metaslabs(spa);
+		}
+	}
+
 	if (dump_opt['M'])
 		dump_metaslab_groups(spa);
 
@@ -4199,6 +4307,7 @@ main(int argc, char **argv)
 	int flags = ZFS_IMPORT_MISSING_LOG;
 	int rewind = ZPOOL_NEVER_REWIND;
 	char *spa_config_path_env;
+	char *blockmap_file_path = NULL;
 	boolean_t target_is_spa = B_TRUE;
 
 	(void) setrlimit(RLIMIT_NOFILE, &rl);
@@ -4216,7 +4325,7 @@ main(int argc, char **argv)
 		spa_config_path = spa_config_path_env;
 
 	while ((c = getopt(argc, argv,
-	    "AbcCdDeEFGhiI:lLmMo:Op:PqRsSt:uU:vVx:X")) != -1) {
+	    "AbcCdDeEFGhiI:lLmMo:Op:PqRsSt:uU:vVx:XZ:")) != -1) {
 		switch (c) {
 		case 'b':
 		case 'c':
@@ -4302,6 +4411,21 @@ main(int argc, char **argv)
 			break;
 		case 'x':
 			vn_dumpdir = optarg;
+			break;
+		case 'Z':
+			if (optarg != NULL){
+				blockmap_file_path = optarg;
+				if (blockmap_file_path[0] != '/') {
+					(void) fprintf(stderr,
+					    "blockmap file must be saved to an absolute path "
+					    "(i.e. start with a slash)\n");
+					usage();
+				}
+			} else {
+				(void) fprintf(stderr,
+				    "absolute path to save blockmap file required\n");
+				usage();
+			}
 			break;
 		default:
 			usage();
@@ -4498,7 +4622,7 @@ main(int argc, char **argv)
 		} else if (zopt_objects > 0 && !dump_opt['m']) {
 			dump_dir(spa->spa_meta_objset);
 		} else {
-			dump_zpool(spa);
+			dump_zpool(spa, blockmap_file_path);
 		}
 	} else {
 		flagbits['b'] = ZDB_FLAG_PRINT_BLKPTR;
