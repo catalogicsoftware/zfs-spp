@@ -1711,7 +1711,7 @@ zfs_preumount(struct super_block *sb)
 	zfsvfs_t *zfsvfs = sb->s_fs_info;
 
 	/* zfsvfs is NULL when zfs_domount fails during mount */
-	if (zfsvfs) {
+	if (zfsvfs && zfsvfs->z_os != NULL) {
 		zfsctl_destroy(sb->s_fs_info);
 		generic_shutdown_super(sb);
 		/*
