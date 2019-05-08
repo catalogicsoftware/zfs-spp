@@ -1455,8 +1455,8 @@ zil_clean(zilog_t *zilog, uint64_t synced_txg)
 		return;
 	}
 	ASSERT3U(itxg->itxg_txg, <=, synced_txg);
-	ASSERT(itxg->itxg_txg != 0);
-	ASSERT(dmu_objset_exiting(zilog->zl_os) || zilog->zl_clean_taskq != NULL);
+	ASSERT3U(itxg->itxg_txg, !=, 0);
+	ASSERT3P(zilog->zl_clean_taskq, !=, NULL);
 	clean_me = itxg->itxg_itxs;
 	itxg->itxg_itxs = NULL;
 	itxg->itxg_txg = 0;
@@ -1467,9 +1467,8 @@ zil_clean(zilog_t *zilog, uint64_t synced_txg)
 	 * free it in-line. This should be rare. Note, using TQ_SLEEP
 	 * created a bad performance problem.
 	 */
-	if (!dmu_objset_exiting(zilog->zl_os))
-		tqid = taskq_dispatch(zilog->zl_clean_taskq,
-		    (void (*)(void *))zil_itxg_clean, clean_me, TQ_NOSLEEP);
+	tqid = taskq_dispatch(zilog->zl_clean_taskq,
+		(void (*)(void *))zil_itxg_clean, clean_me, TQ_NOSLEEP);
 	if (tqid == TASKQID_INVALID)
 		zil_itxg_clean(clean_me);
 }
