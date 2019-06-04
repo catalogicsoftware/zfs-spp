@@ -85,7 +85,7 @@ bqueue_enqueue(bqueue_t *q, void *data, uint64_t item_size)
 		}
 		if (q->bq_size + item_size <= q->bq_maxsize)
 			break;
-		cv_wait(&q->bq_add_cv, &q->bq_lock);
+		cv_wait_sig(&q->bq_add_cv, &q->bq_lock);
 	}
 	q->bq_size += item_size;
 	list_insert_tail(&q->bq_list, data);
@@ -130,7 +130,7 @@ bqueue_dequeue(bqueue_t *q)
 			break;
 		if (q->bq_flags & BQUEUE_F_CLOSED)
 			goto done;
-		cv_wait(&q->bq_pop_cv, &q->bq_lock);
+		cv_wait_sig(&q->bq_pop_cv, &q->bq_lock);
 	}
 	ret = list_remove_head(&q->bq_list);
 	ASSERT3P(ret, !=, NULL);
