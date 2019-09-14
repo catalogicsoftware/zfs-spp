@@ -691,6 +691,21 @@ zfs_destroy(const char *dataset)
 }
 
 static void
+test_wait(const char *pool)
+{
+	nvlist_t *required = fnvlist_alloc();
+	nvlist_t *optional = fnvlist_alloc();
+
+	fnvlist_add_int32(required, "wait_activity", 2);
+	fnvlist_add_uint64(optional, "wait_tag", 0xdeadbeefdeadbeef);
+
+	IOC_INPUT_TEST(ZFS_IOC_WAIT, pool, required, optional, EINVAL);
+
+	nvlist_free(required);
+	nvlist_free(optional);
+}
+
+static void
 zfs_ioc_input_tests(const char *pool)
 {
 	char filepath[] = "/tmp/ioc_test_file_XXXXXX";
@@ -770,6 +785,8 @@ zfs_ioc_input_tests(const char *pool)
 	test_vdev_initialize(pool);
 	test_vdev_trim(pool);
 
+	test_wait(pool);
+
 	/*
 	 * cleanup
 	 */
@@ -827,6 +844,7 @@ enum zfs_ioc_ref {
 boolean_t
 validate_ioc_values(void)
 {
+
 	return (
 	    ZFS_IOC_BASE + 0 == ZFS_IOC_POOL_CREATE &&
 	    ZFS_IOC_BASE + 1 == ZFS_IOC_POOL_DESTROY &&
@@ -909,6 +927,7 @@ validate_ioc_values(void)
 	    ZFS_IOC_BASE + 78 == ZFS_IOC_POOL_DISCARD_CHECKPOINT &&
 	    ZFS_IOC_BASE + 79 == ZFS_IOC_POOL_INITIALIZE &&
 	    ZFS_IOC_BASE + 80 == ZFS_IOC_POOL_TRIM &&
+	    ZFS_IOC_BASE + 83 == ZFS_IOC_WAIT &&
 	    LINUX_IOC_BASE + 1 == ZFS_IOC_EVENTS_NEXT &&
 	    LINUX_IOC_BASE + 2 == ZFS_IOC_EVENTS_CLEAR &&
 	    LINUX_IOC_BASE + 3 == ZFS_IOC_EVENTS_SEEK);

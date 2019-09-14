@@ -1272,6 +1272,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_POOL_DISCARD_CHECKPOINT,	/* 0x5a4e */
 	ZFS_IOC_POOL_INITIALIZE,		/* 0x5a4f */
 	ZFS_IOC_POOL_TRIM,			/* 0x5a50 */
+	ZFS_IOC_WAIT,				/* 0x5a53 */
 
 	/*
 	 * Linux - 3/64 numbers reserved.
@@ -1334,6 +1335,17 @@ typedef enum {
 	SPA_LOAD_CREATE		/* creation in progress */
 } spa_load_state_t;
 
+typedef enum {
+	ZPOOL_WAIT_CKPT_DISCARD,
+	ZPOOL_WAIT_FREE,
+	ZPOOL_WAIT_INITIALIZE,
+	ZPOOL_WAIT_REPLACE,
+	ZPOOL_WAIT_REMOVE,
+	ZPOOL_WAIT_RESILVER,
+	ZPOOL_WAIT_SCRUB,
+	ZPOOL_WAIT_NUM_ACTIVITIES
+} zpool_wait_activity_t;
+
 /*
  * Bookmark name values.
  */
@@ -1383,6 +1395,13 @@ typedef enum {
 #define	ZPOOL_TRIM_VDEVS		"trim_vdevs"
 #define	ZPOOL_TRIM_RATE			"trim_rate"
 #define	ZPOOL_TRIM_SECURE		"trim_secure"
+
+/*
+ * The following are names used when invoking ZFS_IOC_POOL_WAIT.
+ */
+#define	ZPOOL_WAIT_ACTIVITY		"wait_activity"
+#define	ZPOOL_WAIT_TAG			"wait_tag"
+#define	ZPOOL_WAIT_WAITED		"wait_waited"
 
 /*
  * Flags for ZFS_IOC_VDEV_SET_STATE
