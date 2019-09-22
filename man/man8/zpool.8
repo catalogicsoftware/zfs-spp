@@ -64,6 +64,9 @@
 .Op Fl R Ar root
 .Ar pool vdev Ns ...
 .Nm
+.Cm ddtload
+.Ar pool
+.Nm
 .Cm destroy
 .Op Fl f
 .Ar pool
@@ -1251,6 +1254,14 @@ This will set the default cachefile property to none. This is intended
 to handle name space collisions when creating pools for other systems,
 such as virtual machines or physical machines whose pools live on network
 block devices.
+.El
+.It Xo
+.Nm
+.Cm ddtload
+.Ar pool
+.Xc
+Loads the DDT for the given pool, enabling improved write I/O performance
+within the bounds of ARC.
 .El
 .It Xo
 .Nm
