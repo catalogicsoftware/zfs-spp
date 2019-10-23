@@ -2746,10 +2746,9 @@ retry:
  * Check that all the properties are valid user properties.
  */
 static int
-zfs_check_userprops(const char *fsname, nvlist_t *nvl)
+zfs_check_userprops(nvlist_t *nvl)
 {
 	nvpair_t *pair = NULL;
-	int error = 0;
 
 	while ((pair = nvlist_next_nvpair(nvl, pair)) != NULL) {
 		const char *propname = nvpair_name(pair);
@@ -2757,10 +2756,6 @@ zfs_check_userprops(const char *fsname, nvlist_t *nvl)
 		if (!zfs_prop_user(propname) ||
 		    nvpair_type(pair) != DATA_TYPE_STRING)
 			return (SET_ERROR(EINVAL));
-
-		if ((error = zfs_secpolicy_write_perms(fsname,
-		    ZFS_DELEG_PERM_USERPROP, CRED())))
-			return (error);
 
 		if (strlen(propname) >= ZAP_MAXNAMELEN)
 			return (SET_ERROR(ENAMETOOLONG));
@@ -3475,19 +3470,18 @@ zfs_ioc_snapshot(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
 	nvpair_t *pair;
 
 	(void) nvlist_lookup_nvlist(innvl, "props", &props);
-	if ((error = zfs_check_userprops(poolname, props)) != 0)
-		return (error);
-
 	if (!nvlist_empty(props) &&
 	    zfs_earlier_version(poolname, SPA_VERSION_SNAP_PROPS))
 		return (SET_ERROR(ENOTSUP));
+	if ((error = zfs_check_userprops(props)) != 0)
+		return (error);
 
 	snaps = fnvlist_lookup_nvlist(innvl, "snaps");
 	poollen = strlen(poolname);
 	for (pair = nvlist_next_nvpair(snaps, NULL); pair != NULL;
 	    pair = nvlist_next_nvpair(snaps, pair)) {
 		const char *name = nvpair_name(pair);
-		const char *cp = strchr(name, '@');
+		char *cp = strchr(name, '@');
 
 		/*
 		 * The snap name must contain an @, and the part after it must
@@ -3503,6 +3497,18 @@ zfs_ioc_snapshot(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
 		if (strncmp(name, poolname, poollen) != 0 ||
 		    (name[poollen] != '/' && name[poollen] != '@'))
 			return (SET_ERROR(EXDEV));
+
+		/*
+		 * Check for permission to set the properties on the fs.
+		 */
+		if (!nvlist_empty(props)) {
+			*cp = '\0';
+			error = zfs_secpolicy_write_perms(name,
+			    ZFS_DELEG_PERM_USERPROP, CRED());
+			*cp = '@';
+			if (error != 0)
+				return (error);
+		}
 
 		/* This must be the only snap of this fs. */
 		for (nvpair_t *pair2 = nvlist_next_nvpair(snaps, pair);
@@ -3824,6 +3830,34 @@ zfs_ioc_pool_discard_checkpoint(const char *poolname, nvlist_t *innvl,
 }
 
 /*
+ * innvl: unused
+ * outnvl: empty
+ */
+static const zfs_ioc_key_t zfs_keys_pool_ddtload[] = {
+	/* no nvl keys */
+};
+
+/* ARGSUSED */
+static int
+zfs_ioc_pool_ddtload(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int error;
+	spa_t *spa;
+
+	error = spa_open(poolname, &spa, FTAG);
+	if (error != 0)
+		return (error);
+
+	for (enum zio_checksum c = 0; c < ZIO_CHECKSUM_FUNCTIONS; c++) {
+		ddt_loadall(spa->spa_ddt[c]);
+	}
+
+	spa_close(spa, FTAG);
+
+	return (error);
+}
+
+/*
  * inputs:
  * zc_name		name of dataset to destroy
  * zc_defer_destroy	mark for deferred destroy
@@ -4040,6 +4074,56 @@ zfs_ioc_pool_trim(const char *poolname, nvlist_t *innvl, nvlist_t *outnvl)
 
 	spa_close(spa, FTAG);
 	return (total_errors > 0 ? EINVAL : 0);
+}
+
+/*
+ * This ioctl waits for activity of a particular type to complete. If there is
+ * no activity of that type in progress, it returns immediately, and the
+ * returned value "waited" is false. If there is activity in progress, and no
+ * tag is passed in, the ioctl blocks until all activity of that type is
+ * complete, and then returns with "waited" set to true.
+ *
+ * If a tag is provided, it identifies a particular instance of an activity to
+ * wait for. Currently, this is only valid for use with 'initialize', because
+ * that is the only activity for which there can be multiple instances running
+ * concurrently. In the case of 'initialize', the tag corresponds to the guid of
+ * the vdev on which to wait.
+ *
+ * If a thread waiting in the ioctl receives a signal, the call will return
+ * immediately, and the return value will be EINTR.
+ *
+ * innvl: {
+ *     "wait_activity" -> int32_t
+ *     (optional) "wait_tag" -> uint64_t
+ * }
+ *
+ * outnvl: "waited" -> boolean_t
+ */
+static const zfs_ioc_key_t zfs_keys_pool_wait[] = {
+	{ZPOOL_WAIT_ACTIVITY,	DATA_TYPE_INT32,		0},
+	{ZPOOL_WAIT_TAG,	DATA_TYPE_UINT64,		ZK_OPTIONAL},
+};
+
+static int
+zfs_ioc_wait(const char *name, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int32_t activity;
+	uint64_t tag;
+	boolean_t waited;
+	int error;
+
+	if (nvlist_lookup_int32(innvl, ZPOOL_WAIT_ACTIVITY, &activity) != 0)
+		return (EINVAL);
+
+	if (nvlist_lookup_uint64(innvl, ZPOOL_WAIT_TAG, &tag) == 0)
+		error = spa_wait_tag(name, activity, tag, &waited);
+	else
+		error = spa_wait(name, activity, &waited);
+
+	if (error == 0)
+		fnvlist_add_boolean_value(outnvl, ZPOOL_WAIT_WAITED, waited);
+
+	return (error);
 }
 
 /*
@@ -6654,6 +6738,12 @@ zfs_ioctl_init(void)
 	    zfs_keys_pool_discard_checkpoint,
 	    ARRAY_SIZE(zfs_keys_pool_discard_checkpoint));
 
+	zfs_ioctl_register("zpool_ddtload",
+	    ZFS_IOC_POOL_DDTLOAD, zfs_ioc_pool_ddtload,
+	    zfs_secpolicy_config, POOL_NAME,
+	    POOL_CHECK_SUSPENDED, B_TRUE, B_TRUE,
+	    zfs_keys_pool_ddtload, ARRAY_SIZE(zfs_keys_pool_ddtload));
+
 	zfs_ioctl_register("initialize", ZFS_IOC_POOL_INITIALIZE,
 	    zfs_ioc_pool_initialize, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE,
@@ -6663,6 +6753,11 @@ zfs_ioctl_init(void)
 	    zfs_ioc_pool_trim, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE,
 	    zfs_keys_pool_trim, ARRAY_SIZE(zfs_keys_pool_trim));
+
+	zfs_ioctl_register("wait", ZFS_IOC_WAIT,
+	    zfs_ioc_wait, zfs_secpolicy_none, POOL_NAME,
+	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_FALSE, B_FALSE,
+	    zfs_keys_pool_wait, ARRAY_SIZE(zfs_keys_pool_wait));
 
 	/* IOCTLS that use the legacy function signature */
 
@@ -7106,7 +7201,8 @@ zfsdev_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 
 	zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
 
-	error = ddi_copyin((void *)arg, zc, sizeof (zfs_cmd_t), flag);
+	error = ddi_copyin((void *)(uintptr_t)arg, zc, sizeof (zfs_cmd_t),
+	    flag);
 	if (error != 0) {
 		error = SET_ERROR(EFAULT);
 		goto out;
@@ -7265,7 +7361,7 @@ zfsdev_ioctl(struct file *filp, unsigned cmd, unsigned long arg)
 
 out:
 	nvlist_free(innvl);
-	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);
+	rc = ddi_copyout(zc, (void *)(uintptr_t)arg, sizeof (zfs_cmd_t), flag);
 	if (error == 0 && rc != 0)
 		error = SET_ERROR(EFAULT);
 	if (error == 0 && vec->zvec_allow_log) {
@@ -7375,13 +7471,6 @@ static int __init
 _init(void)
 {
 	int error;
-
-	error = -vn_set_pwd("/");
-	if (error) {
-		printk(KERN_NOTICE
-		    "ZFS: Warning unable to set pwd to '/': %d\n", error);
-		return (error);
-	}
 
 	if ((error = -zvol_init()) != 0)
 		return (error);

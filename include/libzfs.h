@@ -147,6 +147,7 @@ typedef enum zfs_error {
 	EZFS_NO_TRIM,		/* no active trim */
 	EZFS_TRIM_NOTSUP,	/* device does not support trim */
 	EZFS_NO_RESILVER_DEFER,	/* pool doesn't support resilver_defer */
+	EZFS_EXPORT_IN_PROGRESS,	/* currently exporting the pool */
 	EZFS_UNKNOWN
 } zfs_error_t;
 
@@ -192,6 +193,10 @@ typedef struct zfs_allow {
 typedef struct zfs_handle zfs_handle_t;
 typedef struct zpool_handle zpool_handle_t;
 typedef struct libzfs_handle libzfs_handle_t;
+
+extern int zpool_wait(zpool_handle_t *, zpool_wait_activity_t);
+extern int zpool_wait_status(zpool_handle_t *, zpool_wait_activity_t,
+    boolean_t *, boolean_t *);
 
 /*
  * Library initialization
@@ -274,6 +279,8 @@ typedef struct trimflags {
 extern int zpool_scan(zpool_handle_t *, pool_scan_func_t, pool_scrub_cmd_t);
 extern int zpool_initialize(zpool_handle_t *, pool_initialize_func_t,
     nvlist_t *);
+extern int zpool_initialize_wait(zpool_handle_t *, pool_initialize_func_t,
+    nvlist_t *);
 extern int zpool_trim(zpool_handle_t *, pool_trim_func_t, nvlist_t *,
     trimflags_t *);
 
@@ -316,6 +323,7 @@ extern int zpool_get_prop(zpool_handle_t *, zpool_prop_t, char *,
     size_t proplen, zprop_source_t *, boolean_t literal);
 extern uint64_t zpool_get_prop_int(zpool_handle_t *, zpool_prop_t,
     zprop_source_t *);
+extern int zpool_props_refresh(zpool_handle_t *);
 
 extern const char *zpool_prop_to_name(zpool_prop_t);
 extern const char *zpool_prop_values(zpool_prop_t);
@@ -437,6 +445,7 @@ extern void zpool_explain_recover(libzfs_handle_t *, const char *, int,
     nvlist_t *);
 extern int zpool_checkpoint(zpool_handle_t *);
 extern int zpool_discard_checkpoint(zpool_handle_t *);
+extern int zpool_ddtload(zpool_handle_t *);
 
 /*
  * Basic handle manipulations.  These functions do not create or destroy the

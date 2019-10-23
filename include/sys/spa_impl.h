@@ -219,6 +219,7 @@ struct spa {
 	spa_taskqs_t	spa_zio_taskq[ZIO_TYPES][ZIO_TASKQ_TYPES];
 	dsl_pool_t	*spa_dsl_pool;
 	boolean_t	spa_is_initializing;	/* true while opening pool */
+	boolean_t	spa_is_exporting;	/* true while exporting pool */
 	metaslab_class_t *spa_normal_class;	/* normal data class */
 	metaslab_class_t *spa_log_class;	/* intent log data class */
 	metaslab_class_t *spa_special_class;	/* special allocation class */
@@ -395,6 +396,14 @@ struct spa {
 	mmp_thread_t	spa_mmp;		/* multihost mmp thread */
 	list_t		spa_leaf_list;		/* list of leaf vdevs */
 	uint64_t	spa_leaf_list_gen;	/* track leaf_list changes */
+	uint32_t	spa_hostid;		/* cached system hostid */
+
+	/* synchronization for threads in spa_wait */
+	kmutex_t	spa_activities_lock;
+	kcondvar_t	spa_activities_cv;
+	kcondvar_t	spa_waiters_cv;
+	int		spa_waiters;		/* number of waiting threads */
+	boolean_t	spa_waiters_cancel;	/* waiters should return */
 
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.
  */
 
@@ -220,6 +220,7 @@ int zap_lookup_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints, uint64_t integer_size, uint64_t num_integers, void *buf);
 int zap_contains(objset_t *ds, uint64_t zapobj, const char *name);
 int zap_prefetch(objset_t *os, uint64_t zapobj, const char *name);
+int zap_prefetch_object(objset_t *os, uint64_t zapobj);
 int zap_prefetch_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
     int key_numints);
 
@@ -350,6 +351,7 @@ typedef struct zap_cursor {
 	uint64_t zc_serialized;
 	uint64_t zc_hash;
 	uint32_t zc_cd;
+	boolean_t zc_prefetch;
 } zap_cursor_t;
 
 typedef struct {
@@ -375,7 +377,9 @@ typedef struct {
  * Initialize a zap cursor, pointing to the "first" attribute of the
  * zapobj.  You must _fini the cursor when you are done with it.
  */
-void zap_cursor_init(zap_cursor_t *zc, objset_t *ds, uint64_t zapobj);
+void zap_cursor_init(zap_cursor_t *zc, objset_t *os, uint64_t zapobj);
+void zap_cursor_init_noprefetch(zap_cursor_t *zc, objset_t *os,
+    uint64_t zapobj);
 void zap_cursor_fini(zap_cursor_t *zc);
 
 /*

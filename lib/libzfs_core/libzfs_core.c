@@ -52,7 +52,7 @@
  *
  *  - Thin Layer.  libzfs_core is a thin layer, marshaling arguments
  *  to/from the kernel ioctls.  There is generally a 1:1 correspondence
- *  between libzfs_core functions and ioctls to /dev/zfs.
+ *  between libzfs_core functions and ioctls to ZFS_DEV.
  *
  *  - Clear Atomicity.  Because libzfs_core functions are generally 1:1
  *  with kernel ioctls, and kernel ioctls are general atomic, each
@@ -135,7 +135,7 @@ libzfs_core_init(void)
 {
 	(void) pthread_mutex_lock(&g_lock);
 	if (g_refcount == 0) {
-		g_fd = open("/dev/zfs", O_RDWR);
+		g_fd = open(ZFS_DEV, O_RDWR);
 		if (g_fd < 0) {
 			(void) pthread_mutex_unlock(&g_lock);
 			return (errno);
@@ -499,7 +499,7 @@ lzc_sync(const char *pool_name, nvlist_t *innvl, nvlist_t **outnvl)
  * The snapshots must all be in the same pool.
  * The value is the name of the hold (string type).
  *
- * If cleanup_fd is not -1, it must be the result of open("/dev/zfs", O_EXCL).
+ * If cleanup_fd is not -1, it must be the result of open(ZFS_DEV, O_EXCL).
  * In this case, when the cleanup_fd is closed (including on process
  * termination), the holds will be released.  If the system is shut down
  * uncleanly, the holds will be released when the pool is next opened
@@ -1303,6 +1303,24 @@ lzc_pool_checkpoint_discard(const char *pool)
 }
 
 /*
+ * Load the DDT table for the specified pool.
+ */
+int
+lzc_pool_ddtload(const char *pool)
+{
+	int error;
+	nvlist_t *result = NULL;
+	nvlist_t *args = fnvlist_alloc();
+
+	error = lzc_ioctl(ZFS_IOC_POOL_DDTLOAD, pool, args, &result);
+
+	fnvlist_free(args);
+	fnvlist_free(result);
+
+	return (error);
+}
+
+/*
  * Executes a read-only channel program.
  *
  * A read-only channel program works programmatically the same way as a
@@ -1478,4 +1496,40 @@ lzc_trim(const char *poolname, pool_trim_func_t cmd_type, uint64_t rate,
 	fnvlist_free(args);
 
 	return (error);
+}
+
+static int
+wait_common(const char *pool, zpool_wait_activity_t activity, boolean_t use_tag,
+    uint64_t tag, boolean_t *waited)
+{
+	nvlist_t *args = fnvlist_alloc();
+	nvlist_t *result = NULL;
+
+	fnvlist_add_int32(args, ZPOOL_WAIT_ACTIVITY, activity);
+	if (use_tag)
+		fnvlist_add_uint64(args, ZPOOL_WAIT_TAG, tag);
+
+	int error = lzc_ioctl(ZFS_IOC_WAIT, pool, args, &result);
+
+	if (error == 0 && waited != NULL)
+		*waited = fnvlist_lookup_boolean_value(result,
+		    ZPOOL_WAIT_WAITED);
+
+	fnvlist_free(args);
+	fnvlist_free(result);
+
+	return (error);
+}
+
+int
+lzc_wait(const char *pool, zpool_wait_activity_t activity, boolean_t *waited)
+{
+	return (wait_common(pool, activity, B_FALSE, 0, waited));
+}
+
+int
+lzc_wait_tag(const char *pool, zpool_wait_activity_t activity, uint64_t tag,
+    boolean_t *waited)
+{
+	return (wait_common(pool, activity, B_TRUE, tag, waited));
 }

@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.
  */
@@ -1045,6 +1045,22 @@ zap_prefetch(objset_t *os, uint64_t zapobj, const char *name)
 }
 
 int
+zap_prefetch_object(objset_t *os, uint64_t zapobj)
+{
+	int error;
+	dmu_object_info_t doi;
+
+	error = dmu_object_info(os, zapobj, &doi);
+	if (error == 0 && DMU_OT_BYTESWAP(doi.doi_type) != DMU_BSWAP_ZAP)
+		error = SET_ERROR(EINVAL);
+	if (error == 0) {
+		dmu_prefetch(os, zapobj, /*level*/ 0, /*offset*/ 0,
+		    doi.doi_max_offset, ZIO_PRIORITY_SYNC_READ);
+	}
+	return (error);
+}
+
+int
 zap_lookup_by_dnode(dnode_t *dn, const char *name,
     uint64_t integer_size, uint64_t num_integers, void *buf)
 {
@@ -1472,9 +1488,9 @@ zap_remove_uint64(objset_t *os, uint64_t zapobj, const uint64_t *key,
  * Routines for iterating over the attributes.
  */
 
-void
-zap_cursor_init_serialized(zap_cursor_t *zc, objset_t *os, uint64_t zapobj,
-    uint64_t serialized)
+static void
+zap_cursor_init_impl(zap_cursor_t *zc, objset_t *os, uint64_t zapobj,
+    uint64_t serialized, boolean_t prefetch)
 {
 	zc->zc_objset = os;
 	zc->zc_zap = NULL;
@@ -1483,12 +1499,33 @@ zap_cursor_init_serialized(zap_cursor_t *zc, objset_t *os, uint64_t zapobj,
 	zc->zc_serialized = serialized;
 	zc->zc_hash = 0;
 	zc->zc_cd = 0;
+	zc->zc_prefetch = prefetch;
+}
+void
+zap_cursor_init_serialized(zap_cursor_t *zc, objset_t *os, uint64_t zapobj,
+    uint64_t serialized)
+{
+	zap_cursor_init_impl(zc, os, zapobj, serialized, B_TRUE);
 }
 
+/*
+ * Initialize a cursor at the beginning of the ZAP object.  The entire
+ * ZAP object will be prefetched.
+ */
 void
 zap_cursor_init(zap_cursor_t *zc, objset_t *os, uint64_t zapobj)
 {
-	zap_cursor_init_serialized(zc, os, zapobj, 0);
+	zap_cursor_init_impl(zc, os, zapobj, 0, B_TRUE);
+}
+
+/*
+ * Initialize a cursor at the beginning, but request that we not prefetch
+ * the entire ZAP object.
+ */
+void
+zap_cursor_init_noprefetch(zap_cursor_t *zc, objset_t *os, uint64_t zapobj)
+{
+	zap_cursor_init_impl(zc, os, zapobj, 0, B_FALSE);
 }
 
 void
@@ -1644,6 +1681,7 @@ EXPORT_SYMBOL(zap_lookup_uint64);
 EXPORT_SYMBOL(zap_contains);
 EXPORT_SYMBOL(zap_prefetch);
 EXPORT_SYMBOL(zap_prefetch_uint64);
+EXPORT_SYMBOL(zap_prefetch_object);
 EXPORT_SYMBOL(zap_add);
 EXPORT_SYMBOL(zap_add_by_dnode);
 EXPORT_SYMBOL(zap_add_uint64);

@@ -659,12 +659,15 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	mutex_init(&spa->spa_suspend_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_vdev_top_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_feat_stats_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&spa->spa_activities_lock, NULL, MUTEX_DEFAULT, NULL);
 
 	cv_init(&spa->spa_async_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&spa->spa_evicting_os_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&spa->spa_proc_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&spa->spa_scrub_io_cv, NULL, CV_DEFAULT, NULL);
 	cv_init(&spa->spa_suspend_cv, NULL, CV_DEFAULT, NULL);
+	cv_init(&spa->spa_activities_cv, NULL, CV_DEFAULT, NULL);
+	cv_init(&spa->spa_waiters_cv, NULL, CV_DEFAULT, NULL);
 
 	for (int t = 0; t < TXG_SIZE; t++)
 		bplist_create(&spa->spa_free_bplist[t]);
@@ -677,6 +680,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	spa->spa_proc = &p0;
 	spa->spa_proc_state = SPA_PROC_NONE;
 	spa->spa_trust_config = B_TRUE;
+	spa->spa_hostid = zone_get_hostid(NULL);
 
 	spa->spa_deadman_synctime = MSEC2NSEC(zfs_deadman_synctime_ms);
 	spa->spa_deadman_ziotime = MSEC2NSEC(zfs_deadman_ziotime_ms);
@@ -769,6 +773,7 @@ spa_remove(spa_t *spa)
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 	ASSERT(spa->spa_state == POOL_STATE_UNINITIALIZED);
 	ASSERT3U(zfs_refcount_count(&spa->spa_refcount), ==, 0);
+	ASSERT0(spa->spa_waiters);
 
 	nvlist_free(spa->spa_config_splitting);
 
@@ -817,6 +822,8 @@ spa_remove(spa_t *spa)
 	cv_destroy(&spa->spa_proc_cv);
 	cv_destroy(&spa->spa_scrub_io_cv);
 	cv_destroy(&spa->spa_suspend_cv);
+	cv_destroy(&spa->spa_activities_cv);
+	cv_destroy(&spa->spa_waiters_cv);
 
 	mutex_destroy(&spa->spa_async_lock);
 	mutex_destroy(&spa->spa_errlist_lock);
@@ -830,6 +837,7 @@ spa_remove(spa_t *spa)
 	mutex_destroy(&spa->spa_suspend_lock);
 	mutex_destroy(&spa->spa_vdev_top_lock);
 	mutex_destroy(&spa->spa_feat_stats_lock);
+	mutex_destroy(&spa->spa_activities_lock);
 
 	kmem_free(spa, sizeof (spa_t));
 }
@@ -2626,22 +2634,10 @@ spa_multihost(spa_t *spa)
 	return (spa->spa_multihost ? B_TRUE : B_FALSE);
 }
 
-unsigned long
-spa_get_hostid(void)
+uint32_t
+spa_get_hostid(spa_t *spa)
 {
-	unsigned long myhostid;
-
-#ifdef	_KERNEL
-	myhostid = zone_get_hostid(NULL);
-#else	/* _KERNEL */
-	/*
-	 * We're emulating the system's hostid in userland, so
-	 * we can't use zone_get_hostid().
-	 */
-	(void) ddi_strtoul(hw_serial, NULL, 10, &myhostid);
-#endif	/* _KERNEL */
-
-	return (myhostid);
+	return (spa->spa_hostid);
 }
 
 boolean_t

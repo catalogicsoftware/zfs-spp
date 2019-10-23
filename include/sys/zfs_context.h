@@ -258,6 +258,8 @@ extern void mutex_enter(kmutex_t *mp);
 extern void mutex_exit(kmutex_t *mp);
 extern int mutex_tryenter(kmutex_t *mp);
 
+#define	NESTED_SINGLE 1
+#define	mutex_enter_nested(mp, class) mutex_enter(mp)
 /*
  * RW locks
  */
@@ -314,8 +316,8 @@ extern void cv_broadcast(kcondvar_t *cv);
 
 #define	cv_timedwait_io(cv, mp, at)		cv_timedwait(cv, mp, at)
 #define	cv_timedwait_sig(cv, mp, at)		cv_timedwait(cv, mp, at)
-#define	cv_wait_sig(cv, mp)			cv_wait(cv, mp)
 #define	cv_wait_io(cv, mp)			cv_wait(cv, mp)
+#define	cv_wait_io_sig(cv, mp)			cv_wait_sig(cv, mp)
 #define	cv_timedwait_sig_hires(cv, mp, t, r, f) \
 	cv_timedwait_hires(cv, mp, t, r, f)
 
