@@ -1532,7 +1532,6 @@ zfs_root(zfsvfs_t *zfsvfs, struct inode **ipp)
 	return (error);
 }
 
-#ifdef HAVE_D_PRUNE_ALIASES
 /*
  * Linux kernels older than 3.1 do not support a per-filesystem shrinker.
  * To accommodate this we must improvise and manually walk the list of znodes
@@ -1590,7 +1589,6 @@ zfs_prune_aliases(zfsvfs_t *zfsvfs, unsigned long nr_to_scan)
 
 	return (objects);
 }
-#endif /* HAVE_D_PRUNE_ALIASES */
 
 /*
  * The ARC has requested that the filesystem drop entries from the dentry
@@ -1602,13 +1600,11 @@ zfs_prune(struct super_block *sb, unsigned long nr_to_scan, int *objects)
 {
 	zfsvfs_t *zfsvfs = sb->s_fs_info;
 	int error = 0;
-#if defined(HAVE_SHRINK) || defined(HAVE_SPLIT_SHRINKER_CALLBACK)
 	struct shrinker *shrinker = &sb->s_shrink;
 	struct shrink_control sc = {
 		.nr_to_scan = nr_to_scan,
 		.gfp_mask = GFP_KERNEL,
 	};
-#endif
 
 	ZFS_ENTER(zfsvfs);
 
@@ -1626,7 +1622,7 @@ zfs_prune(struct super_block *sb, unsigned long nr_to_scan, int *objects)
 
 #elif defined(HAVE_SPLIT_SHRINKER_CALLBACK)
 	*objects = (*shrinker->scan_objects)(shrinker, &sc);
-#elif defined(HAVE_SHRINK)
+#elif defined(HAVE_SINGLE_SHRINKER_CALLBACK)
 	*objects = (*shrinker->shrink)(shrinker, &sc);
 #elif defined(HAVE_D_PRUNE_ALIASES)
 #define	D_PRUNE_ALIASES_IS_DEFAULT
@@ -1811,8 +1807,7 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 	return (0);
 }
 
-#if !defined(HAVE_2ARGS_BDI_SETUP_AND_REGISTER) && \
-	!defined(HAVE_3ARGS_BDI_SETUP_AND_REGISTER)
+#if defined(HAVE_SUPER_SETUP_BDI_NAME)
 atomic_long_t zfs_bdi_seq = ATOMIC_LONG_INIT(0);
 #endif
 
