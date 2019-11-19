@@ -860,6 +860,11 @@ avl_destroy(avl_tree_t *tree)
 	ASSERT(tree->avl_root == NULL);
 }
 
+uint64_t
+avl_size(avl_tree_t *tree)
+{
+	return (sizeof(tree));
+}
 
 /*
  * Return the number of nodes in an AVL tree.
@@ -1029,4 +1034,5 @@ EXPORT_SYMBOL(avl_remove);
 EXPORT_SYMBOL(avl_numnodes);
 EXPORT_SYMBOL(avl_destroy_nodes);
 EXPORT_SYMBOL(avl_destroy);
+EXPORT_SYMBOL(avl_size);
 #endif

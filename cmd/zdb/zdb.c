@@ -1418,6 +1418,7 @@ dump_ddt(ddt_t *ddt, enum ddt_type type, enum ddt_class class)
 	dmu_object_info_t doi;
 	uint64_t count, dspace, mspace;
 	int error;
+	uint64_t ddt_total_size = 0;
 
 	error = ddt_object_info(ddt, type, class, &doi);
 
@@ -1432,6 +1433,10 @@ dump_ddt(ddt_t *ddt, enum ddt_type type, enum ddt_class class)
 
 	dspace = (doi.doi_physical_blocks_512 << 9) / count;
 	mspace = (doi.doi_fill_count * doi.doi_data_block_size) / count;
+	ddt_total_size = avl_size(&ddt->ddt_tree);
+
+	if (type == DDT_TYPE_LOG)
+		mspace = ddt_total_size;
 
 	ddt_object_name(ddt, type, class, name);
 
