@@ -410,6 +410,9 @@ struct spa {
 	uint32_t	spa_hostid;		/* cached system hostid */
 
 	uint64_t	spa_dedup_type;		/* DDT Type */
+	uint64_t	spa_dedup_table_quota;	/* Target maximum size of DDT */
+	uint64_t	spa_dedup_table_size;	/* cached on-disk size of DDT */
+
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements
 	 * because zfs_refcount_t changes size based on compilation options.
