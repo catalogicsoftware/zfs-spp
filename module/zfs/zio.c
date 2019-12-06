@@ -3255,6 +3255,7 @@ zio_ddt_write(zio_t *zio)
 	ddt_t *ddt = ddt_select(spa, bp);
 	ddt_entry_t *dde;
 	ddt_phys_t *ddp;
+	boolean_t added = B_FALSE;
 
 	ASSERT(BP_GET_DEDUP(bp));
 	ASSERT(BP_GET_CHECKSUM(bp) == zp->zp_checksum);
@@ -3262,8 +3263,38 @@ zio_ddt_write(zio_t *zio)
 	ASSERT(!(zio->io_bp_override && (zio->io_flags & ZIO_FLAG_RAW)));
 
 	ddt_enter(ddt);
-	dde = ddt_lookup(ddt, bp, B_TRUE);
+	if (spa->spa_dedup_max_entries &&
+	    spa->spa_dedup_entries >= spa->spa_dedup_max_entries) {
+		/* Over the desired DDT size, set 'nogrow' flag */
+		dde = ddt_lookup(ddt, bp, B_TRUE, B_TRUE, NULL);
+	} else {
+		dde = ddt_lookup(ddt, bp, B_TRUE, B_FALSE, &added);
+	}
+	if (dde == NULL) {
+#if defined(_KERNEL) && defined(ZFS_DEBUG)
+		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__,
+		    "At ddt entries %zu of %zu, txg = %lu\n", spa->spa_dedup_entries,
+		    spa->spa_dedup_max_entries, txg);
+#endif
+		zp->zp_dedup = B_FALSE;
+		BP_SET_DEDUP(bp, B_FALSE);
+		ASSERT(!BP_GET_DEDUP(bp));
+		zio->io_pipeline = ZIO_WRITE_PIPELINE;
+		ddt_exit(ddt);
+		return (zio);
+	}
+
 	ddp = &dde->dde_phys[p];
+
+	if (added) {
+#if defined(_KERNEL) && defined(ZFS_DEBUG)
+		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__,
+			  "Increasing DDT entries from %zu to %zu\n",
+			spa->spa_dedup_entries,
+			spa->spa_dedup_entries + 1);
+#endif
+		spa->spa_dedup_entries++;
+	}
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
 		/*
@@ -3364,21 +3395,18 @@ zio_ddt_free(zio_t *zio)
 	spa_t *spa = zio->io_spa;
 	blkptr_t *bp = zio->io_bp;
 	ddt_t *ddt = ddt_select(spa, bp);
-	ddt_entry_t *dde;
-	ddt_phys_t *ddp;
+	ddt_entry_t *dde = NULL;
+	ddt_phys_t *ddp = NULL;
 	boolean_t added = B_FALSE;
 
 	ASSERT(BP_GET_DEDUP(bp));
 	ASSERT(zio->io_child_type == ZIO_CHILD_LOGICAL);
 
 	ddt_enter(ddt);
-	dde = ddt_lookup(ddt, bp, B_FALSE);
-	if (dde == NULL) {
-		dde = ddt_lookup(ddt, bp, B_TRUE);
-		added = B_TRUE;
+	freedde = dde = ddt_lookup(ddt, bp, B_TRUE, B_FALSE, &added);
+	if (dde) {
+		ddp = ddt_phys_select(dde, bp);
 	}
-	freedde = dde;
-	ddp = ddt_phys_select(dde, bp);
 	if (ddp != NULL) {
 #if defined(ZFS_DEBUG) && !defined(_KERNEL)
 		(void) printf("zio_ddt_free(vd=%llu off=%llx) found matching entry with rc=%llu\n",
