@@ -410,6 +410,16 @@ struct spa {
 	uint32_t	spa_hostid;		/* cached system hostid */
 
 	uint64_t	spa_dedup_type;		/* DDT Type */
+	uint64_t	spa_dedup_table_quota;	/* Target maximum size of DDT */
+	uint64_t	spa_dedup_table_size;	/* cached on-disk size of DDT */
+	uint64_t	spa_dedup_table_count;	/* Cached # of entries */
+	/*
+	 * This is how many additions are pending to be added to the DDT.
+	 * It gets zeroed out when the DDT is synced, and used when adding
+	 * new entries to the DDT, to check against the quota.
+	 */
+	uint64_t	spa_ddt_pending;
+
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements
 	 * because zfs_refcount_t changes size based on compilation options.
