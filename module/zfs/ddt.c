@@ -512,7 +512,21 @@ ddt_get_dedup_object_stats(spa_t *spa, ddt_object_t *ddo_total)
 			}
 		}
 	}
+
+	spa->spa_ddt_dsize = ddo_total->ddo_dspace;
 }
+
+uint64_t
+ddt_get_ddt_dsize(spa_t *spa)
+{
+	ddt_object_t ddo_total;
+
+	if (spa->spa_ddt_dsize == ~0ULL)
+		ddt_get_dedup_object_stats(spa, &ddo_total);
+
+	return (spa->spa_ddt_dsize);
+}
+
 
 void
 ddt_get_dedup_histogram(spa_t *spa, ddt_histogram_t *ddh)
@@ -787,7 +801,7 @@ ddt_loadall(ddt_t *ddt)
 }
 
 ddt_entry_t *
-ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add)
+ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t nogrow, boolean_t *addedp)
 {
 	ddt_entry_t *dde, dde_search;
 	enum ddt_type type;
@@ -801,8 +815,6 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add)
 
 	dde = avl_find(&ddt->ddt_tree, &dde_search, &where);
 	if (dde == NULL) {
-		if (!add)
-			return (NULL);
 		dde = ddt_alloc(&dde_search.dde_key);
 		avl_insert(&ddt->ddt_tree, dde, where);
 	}
@@ -833,6 +845,13 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add)
 
 	ddt_enter(ddt);
 
+	if (error == ENOENT && nogrow == B_TRUE) {
+		avl_remove(&ddt->ddt_tree, dde);
+		dde->dde_loading = B_FALSE;
+		ddt_free(dde);
+		return (NULL);
+	}
+
 	ASSERT(dde->dde_loaded == B_FALSE);
 	ASSERT(dde->dde_loading == B_TRUE);
 
@@ -843,6 +862,8 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add)
 
 	if (error == 0)
 		ddt_stat_update(ddt, dde, -1ULL);
+	else if (error == ENOENT && addedp != NULL)
+		*addedp = B_TRUE;
 
 	cv_broadcast(&dde->dde_cv);
 
@@ -979,6 +1000,7 @@ ddt_load(spa_t *spa)
 		bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 		    sizeof (ddt->ddt_histogram));
 		spa->spa_dedup_dspace = ~0ULL;
+		spa->spa_ddt_dsize = ~0ULL;
 	}
 
 	return (0);
@@ -1354,6 +1376,7 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 	bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 	    sizeof (ddt->ddt_histogram));
 	spa->spa_dedup_dspace = ~0ULL;
+	spa->spa_ddt_dsize = ~0ULL;
 }
 
 void
@@ -1438,6 +1461,12 @@ ddt_walk(spa_t *spa, ddt_bookmark_t *ddb, ddt_entry_t *dde)
 	} while (++ddb->ddb_class < DDT_CLASSES);
 
 	return (SET_ERROR(ENOENT));
+}
+
+int
+ddt_entry_size(void)
+{
+	return (sizeof (struct ddt_phys));
 }
 
 #if defined(_KERNEL)
