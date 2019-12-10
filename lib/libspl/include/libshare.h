@@ -87,6 +87,7 @@ extern int sa_generate_share(const char *, const char *);
 
 extern int sharetab_lock(void);
 extern int sharetab_unlock(void);
+extern boolean_t sharetab_locked(void);
 
 /* protocol specific interfaces */
 extern int sa_parse_legacy_options(sa_group_t, char *, char *);
