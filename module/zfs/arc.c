@@ -296,6 +296,7 @@
 #include <sys/vmsystm.h>
 #include <sys/zpl.h>
 #include <linux/page_compat.h>
+#include <linux/mod_compat.h>
 #endif
 #include <sys/callb.h>
 #include <sys/kstat.h>
@@ -9367,6 +9368,26 @@ l2arc_stop(void)
 }
 
 #if defined(_KERNEL)
+
+static int
+param_set_arc_value(const char *buf, zfs_kernel_param_t *kp)
+{
+	uint64_t val;
+	int error;
+
+	error = kstrtoull(buf, 0, &val);
+	if (error)
+		return (SET_ERROR(error));
+
+	error = param_set_long(buf, kp);
+	if (error < 0)
+		return (SET_ERROR(error));
+
+	arc_tuning_update();
+
+	return (0);
+}
+
 EXPORT_SYMBOL(arc_buf_size);
 EXPORT_SYMBOL(arc_write);
 EXPORT_SYMBOL(arc_read);
@@ -9376,16 +9397,19 @@ EXPORT_SYMBOL(arc_add_prune_callback);
 EXPORT_SYMBOL(arc_remove_prune_callback);
 
 /* BEGIN CSTYLED */
-module_param(zfs_arc_min, ulong, 0644);
+module_param_call(zfs_arc_min, param_set_arc_value, param_get_long,
+	 &zfs_arc_min, 0644);
 MODULE_PARM_DESC(zfs_arc_min, "Min arc size");
 
-module_param(zfs_arc_max, ulong, 0644);
+module_param_call(zfs_arc_max, param_set_arc_value, param_get_long,
+	&zfs_arc_max, 0644);
 MODULE_PARM_DESC(zfs_arc_max, "Max arc size");
 
 module_param(zfs_arc_meta_limit, ulong, 0644);
 MODULE_PARM_DESC(zfs_arc_meta_limit, "Meta limit for arc size");
 
-module_param(zfs_arc_meta_limit_percent, ulong, 0644);
+module_param_call(zfs_arc_meta_limit_percent, param_set_arc_value, param_get_long,
+	&zfs_arc_meta_limit_percent, 0644);
 MODULE_PARM_DESC(zfs_arc_meta_limit_percent,
 	"Percent of arc size for arc meta limit");
 
