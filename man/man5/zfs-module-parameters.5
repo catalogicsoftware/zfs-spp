@@ -2860,11 +2860,13 @@ Default value: \fB5\fR.
 \fBzfs_unique_ddt_max\fR (ulong)
 .ad
 .RS 12n
-Max unique refcount=1 entries in bytes. Default value is 128MB.
+Max unique refcount=1 entries in bytes. Default value is 0, which is off.
+The value needs to be 1024 bytes or higher, otherwise value will get
+rejected and defaulted back to off. 
 .sp
 This value can be changed dynamically.
 .sp
-Default value: \fB134217728\fR.
+Default value: \fB0\fR.
 .RE
 
 .sp
