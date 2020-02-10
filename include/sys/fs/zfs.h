@@ -245,6 +245,7 @@ typedef enum {
 	ZPOOL_PROP_CHECKPOINT,
 	ZPOOL_PROP_LOAD_GUID,
 	ZPOOL_PROP_AUTOTRIM,
+	ZPOOL_PROP_DEDUPCACHED,
 	ZPOOL_NUM_PROPS
 } zpool_prop_t;
 
@@ -956,7 +957,7 @@ typedef struct pool_scan_stat {
 	/* values not stored on disk */
 	uint64_t	pss_pass_exam; /* examined bytes per scan pass */
 	uint64_t	pss_pass_start;	/* start time of a scan pass */
-	uint64_t	pss_pass_scrub_pause; /* pause time of a scurb pass */
+	uint64_t	pss_pass_scrub_pause; /* pause time of a scrub pass */
 	/* cumulative time scrub spent paused, needed for rate calculation */
 	uint64_t	pss_pass_scrub_spent_paused;
 	uint64_t	pss_pass_issued; /* issued bytes per scan pass */
@@ -1030,7 +1031,7 @@ typedef struct vdev_stat {
 	uint64_t	vs_fragmentation;	/* device fragmentation */
 	uint64_t	vs_initialize_bytes_done; /* bytes initialized */
 	uint64_t	vs_initialize_bytes_est; /* total bytes to initialize */
-	uint64_t	vs_initialize_state;	/* vdev_initialzing_state_t */
+	uint64_t	vs_initialize_state;	/* vdev_initializing_state_t */
 	uint64_t	vs_initialize_action_time; /* time_t */
 	uint64_t	vs_checkpoint_space;    /* checkpoint-consumed space */
 	uint64_t	vs_resilver_deferred;	/* resilver deferred	*/
@@ -1375,6 +1376,12 @@ typedef enum {
 #define	ZPOOL_HIDDEN_ARGS	"hidden_args"
 
 /*
+ * The following are names used when invoking ZFS_IOC_POOL_GET_PROPS.
+ */
+#define	ZPOOL_GET_PROPS_NAMES		"get_props_names"
+#define	ZPOOL_GET_PROPS_EXCLUSIVE	"get_props_exclusive"
+
+/*
  * The following are names used when invoking ZFS_IOC_POOL_INITIALIZE.
  */
 #define	ZPOOL_INITIALIZE_COMMAND	"initialize_command"
@@ -1409,6 +1416,7 @@ typedef enum {
 #define	ZFS_IMPORT_SKIP_MMP	0x20
 #define	ZFS_IMPORT_LOAD_KEYS	0x40
 #define	ZFS_IMPORT_CHECKPOINT	0x80
+#define	ZFS_IMPORT_DEDUP_PRUNE_UNIQUE	0x100
 
 /*
  * Channel program argument/return nvlist keys and defaults.

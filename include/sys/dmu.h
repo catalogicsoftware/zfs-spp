@@ -467,7 +467,7 @@ int dmu_object_set_nlevels(objset_t *os, uint64_t object, int nlevels,
 /*
  * Set the data blocksize for an object.
  *
- * The object cannot have any blocks allcated beyond the first.  If
+ * The object cannot have any blocks allocated beyond the first.  If
  * the first block is allocated already, the new size must be greater
  * than the current block size.  If these conditions are not met,
  * ENOTSUP will be returned.
@@ -502,6 +502,11 @@ void dmu_object_set_compress(objset_t *os, uint64_t object, uint8_t compress,
 
 
 int dmu_object_remap_indirects(objset_t *os, uint64_t object, uint64_t txg);
+/*
+ * Get an estimated cache size for an object.  Caller must expect races.
+ */
+void dmu_object_cached_size(objset_t *os, uint64_t object,
+    uint64_t *l1sz, uint64_t *l2sz);
 
 void dmu_write_embedded(objset_t *os, uint64_t object, uint64_t offset,
     void *data, uint8_t etype, uint8_t comp, int uncompressed_size,
@@ -887,6 +892,8 @@ extern int zfs_max_recordsize;
  */
 void dmu_prefetch(objset_t *os, uint64_t object, int64_t level, uint64_t offset,
 	uint64_t len, enum zio_priority pri);
+int dmu_prefetch_wait(objset_t *os, uint64_t object, uint64_t offset,
+    uint64_t size, uint32_t flags);
 
 typedef struct dmu_object_info {
 	/* All sizes are in bytes unless otherwise indicated. */

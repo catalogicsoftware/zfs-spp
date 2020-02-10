@@ -74,7 +74,7 @@
  *
  * To turn this into an overnight stress test, use -T to specify run time.
  *
- * You can ask more more vdevs [-v], datasets [-d], or threads [-t]
+ * You can ask more vdevs [-v], datasets [-d], or threads [-t]
  * to increase the pool capacity, fanout, and overall stress level.
  *
  * Use the -k option to set the desired frequency of kills.
@@ -1693,7 +1693,7 @@ ztest_log_write(ztest_ds_t *zd, dmu_tx_t *tx, lr_write_t *lr)
 	if (zil_replaying(zd->zd_zilog, tx))
 		return;
 
-	if (lr->lr_length > ZIL_MAX_LOG_DATA)
+	if (lr->lr_length > zil_max_log_data(zd->zd_zilog))
 		write_state = WR_INDIRECT;
 
 	itx = zil_itx_create(TX_WRITE,

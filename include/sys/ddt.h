@@ -217,6 +217,7 @@ extern void ddt_stat_update(ddt_t *ddt, ddt_entry_t *dde, uint64_t neg);
 
 extern uint64_t ddt_get_dedup_dspace(spa_t *spa);
 extern uint64_t ddt_get_pool_dedup_ratio(spa_t *spa);
+extern uint64_t ddt_get_pool_dedup_cached(spa_t *spa);
 
 extern int ddt_ditto_copies_needed(ddt_t *ddt, ddt_entry_t *dde,
     ddt_phys_t *ddp_willref);
