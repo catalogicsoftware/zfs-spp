@@ -56,6 +56,7 @@ int zfs_dedup_prefetch = 0;
 unsigned long zfs_unique_ddt_max = DDT_UNIQUE_MAX_SIZE;
 
 static const ddt_ops_t *ddt_ops[DDT_TYPES] = {
+	&ddt_log_ops,
 	&ddt_zap_ops,
 };
 

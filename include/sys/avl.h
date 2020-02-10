@@ -265,6 +265,11 @@ extern void avl_remove(avl_tree_t *tree, void *node);
 extern void avl_swap(avl_tree_t *tree1, avl_tree_t *tree2);
 
 /*
+ * Return size of the tree
+ */
+extern uint64_t avl_size(avl_tree_t *tree);
+
+/*
  * Return the number of nodes in the tree
  */
 extern ulong_t avl_numnodes(avl_tree_t *tree);
