@@ -141,6 +141,10 @@
 .Oo Ar pool Oc Ns ...
 .Op Ar interval Op Ar count
 .Nm
+.Cm load
+.Ar type
+.Ar pool
+.Nm
 .Cm offline
 .Op Fl f
 .Op Fl t
@@ -1242,14 +1246,6 @@ block devices.
 .El
 .It Xo
 .Nm
-.Cm ddtload
-.Ar pool
-.Xc
-Loads the DDT for the given pool, enabling improved write I/O performance
-within the bounds of ARC.
-.El
-.It Xo
-.Nm
 .Cm destroy
 .Op Fl f
 .Ar pool
@@ -2010,6 +2006,18 @@ See
 Verbose statistics.
 Reports usage statistics for individual vdevs within the pool, in addition to
 the pool-wise statistics.
+.El
+.It Xo
+.Nm
+.Cm load
+.Ar type
+.Ar pool
+.Xc
+Loads specific types of data for the given pool.
+.Bl -tag -width Ds
+.It Ar type
+The type of data to load, such as ddt, enabling improved write I/O performance
+within the bounds of ARC
 .El
 .It Xo
 .Nm
@@ -2792,6 +2800,12 @@ Similar to the
 .Fl d
 option in
 .Nm zpool import .
+.El
+.Bl -tag -width "ZPOOL_IMPORT_UDEV_TIMEOUT_MS"
+.It Ev ZPOOL_IMPORT_UDEV_TIMEOUT_MS
+The maximum time in milliseconds that
+.Nm zpool import
+will wait for an expected device to be available.
 .El
 .Bl -tag -width "ZPOOL_VDEV_NAME_GUID"
 .It Ev ZPOOL_VDEV_NAME_GUID

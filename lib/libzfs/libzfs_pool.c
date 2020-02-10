@@ -76,6 +76,14 @@ zpool_get_all_props(zpool_handle_t *zhp)
 
 	(void) strlcpy(zc.zc_name, zhp->zpool_name, sizeof (zc.zc_name));
 
+	if (zhp->zpool_n_propnames > 0) {
+		nvlist_t *innvl = fnvlist_alloc();
+		fnvlist_add_string_array(innvl, ZPOOL_GET_PROPS_NAMES,
+		    zhp->zpool_propnames, zhp->zpool_n_propnames);
+		if (zcmd_write_src_nvlist(hdl, &zc, innvl) != 0)
+			return (-1);
+	}
+
 	if (zcmd_alloc_dst_nvlist(hdl, &zc, 0) != 0)
 		return (-1);
 
@@ -734,8 +742,6 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 			break;
 
 		default:
-			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-			    "property '%s'(%d) not defined"), propname, prop);
 			break;
 		}
 	}
@@ -1552,7 +1558,7 @@ zpool_add(zpool_handle_t *zhp, nvlist_t *nvroot)
 
 		case EOVERFLOW:
 			/*
-			 * This occurrs when one of the devices is below
+			 * This occurs when one of the devices is below
 			 * SPA_MINDEVSIZE.  Unfortunately, we can't detect which
 			 * device was the problem device since there's no
 			 * reliable way to determine device size from userland.
@@ -4125,6 +4131,15 @@ zbookmark_mem_compare(const void *a, const void *b)
 	return (memcmp(a, b, sizeof (zbookmark_phys_t)));
 }
 
+void
+zpool_add_propname(zpool_handle_t *zhp, char *propname)
+{
+
+	assert(zhp->zpool_n_propnames < ZHP_MAX_PROPNAMES);
+	zhp->zpool_propnames[zhp->zpool_n_propnames] = propname;
+	zhp->zpool_n_propnames++;
+}
+
 /*
  * Retrieve the persistent error log, uniquify the members, and return to the
  * caller.
@@ -4175,7 +4190,7 @@ zpool_get_errlog(zpool_handle_t *zhp, nvlist_t **nverrlistp)
 	/*
 	 * Sort the resulting bookmarks.  This is a little confusing due to the
 	 * implementation of ZFS_IOC_ERROR_LOG.  The bookmarks are copied last
-	 * to first, and 'zc_nvlist_dst_size' indicates the number of boomarks
+	 * to first, and 'zc_nvlist_dst_size' indicates the number of bookmarks
 	 * _not_ copied as part of the process.  So we point the start of our
 	 * array appropriate and decrement the total number of elements.
 	 */
@@ -4326,33 +4341,37 @@ get_history(zpool_handle_t *zhp, char *buf, uint64_t *off, uint64_t *len)
  * Retrieve the command history of a pool.
  */
 int
-zpool_get_history(zpool_handle_t *zhp, nvlist_t **nvhisp)
+zpool_get_history(zpool_handle_t *zhp, nvlist_t **nvhisp, uint64_t *off,
+    boolean_t *eof)
 {
 	char *buf;
 	int buflen = 128 * 1024;
-	uint64_t off = 0;
 	nvlist_t **records = NULL;
 	uint_t numrecords = 0;
 	int err, i;
+	uint64_t start = *off;
 
 	buf = malloc(buflen);
 	if (buf == NULL)
 		return (ENOMEM);
-	do {
+	/* process about 1MB a time */
+	while (*off - start < 1024 * 1024) {
 		uint64_t bytes_read = buflen;
 		uint64_t leftover;
 
-		if ((err = get_history(zhp, buf, &off, &bytes_read)) != 0)
+		if ((err = get_history(zhp, buf, off, &bytes_read)) != 0)
 			break;
 
 		/* if nothing else was read in, we're at EOF, just return */
-		if (!bytes_read)
+		if (!bytes_read) {
+			*eof = B_TRUE;
 			break;
+		}
 
 		if ((err = zpool_history_unpack(buf, bytes_read,
 		    &leftover, &records, &numrecords)) != 0)
 			break;
-		off -= leftover;
+		*off -= leftover;
 		if (leftover == bytes_read) {
 			/*
 			 * no progress made, because buffer is not big enough
@@ -4364,9 +4383,7 @@ zpool_get_history(zpool_handle_t *zhp, nvlist_t **nvhisp)
 			if (buf == NULL)
 				return (ENOMEM);
 		}
-
-		/* CONSTCOND */
-	} while (1);
+	}
 
 	free(buf);
 
@@ -4803,7 +4820,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, char *name)
 	if (rval) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "freshly written "
 		    "EFI label on '%s' is damaged.  Ensure\nthis device "
-		    "is not in in use, and is functioning properly: %d"),
+		    "is not in use, and is functioning properly: %d"),
 		    path, rval);
 		return (zfs_error(hdl, EZFS_LABELFAILED, errbuf));
 	}

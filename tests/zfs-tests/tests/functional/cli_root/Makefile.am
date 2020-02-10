@@ -48,6 +48,7 @@ SUBDIRS = \
 	zpool_import \
 	zpool_initialize \
 	zpool_labelclear \
+	zpool_load \
 	zpool_offline \
 	zpool_online \
 	zpool_remove \

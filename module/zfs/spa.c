@@ -29,7 +29,7 @@
  * Copyright 2016 Toomas Soome <tsoome@me.com>
  * Copyright (c) 2016 Actifio, Inc. All rights reserved.
  * Copyright 2018 Joyent, Inc.
- * Copyright (c) 2017 Datto Inc.
+ * Copyright (c) 2017, 2019, Datto Inc. All rights reserved.
  * Copyright 2017 Joyent, Inc.
  * Copyright (c) 2017, Intel Corporation.
  */
@@ -261,6 +261,52 @@ spa_prop_add_list(nvlist_t *nvl, zpool_prop_t prop, char *strval,
 	nvlist_free(propval);
 }
 
+static int
+spa_prop_add(spa_t *spa, const char *propname, nvlist_t *outnvl)
+{
+	zpool_prop_t prop = zpool_name_to_prop(propname);
+	zprop_source_t src = ZPROP_SRC_NONE;
+	uint64_t intval;
+
+	/*
+	 * NB: Not all special properties looked up via this API require
+	 *     the spa props lock, so they must explicitly grab here.
+	 */
+	switch (prop) {
+	case ZPOOL_PROP_DEDUPCACHED:
+		intval = ddt_get_pool_dedup_cached(spa);
+		break;
+	default:
+		return (SET_ERROR(EINVAL));
+	}
+
+	spa_prop_add_list(outnvl, prop, NULL, intval, src);
+
+	return (0);
+}
+
+int
+spa_prop_get_nvlist(spa_t *spa, char **props, unsigned int n_props,
+    nvlist_t **outnvl)
+{
+	int err;
+
+	if (props == NULL)
+		return (0);
+
+	if (*outnvl == NULL) {
+		err = nvlist_alloc(outnvl, NV_UNIQUE_NAME, KM_SLEEP);
+		if (err)
+			return (err);
+	}
+
+	for (unsigned int i = 0; i < n_props && err == 0; i++) {
+		err = spa_prop_add(spa, props[i], *outnvl);
+	}
+
+	return (err);
+}
+
 /*
  * Get property values from the spa configuration.
  */
@@ -394,9 +440,11 @@ spa_prop_get(spa_t *spa, nvlist_t **nvp)
 	zap_attribute_t za;
 	int err;
 
-	err = nvlist_alloc(nvp, NV_UNIQUE_NAME, KM_SLEEP);
-	if (err)
-		return (err);
+	if (*nvp == NULL) {
+		err = nvlist_alloc(nvp, NV_UNIQUE_NAME, KM_SLEEP);
+		if (err)
+			return (err);
+	}
 
 	mutex_enter(&spa->spa_props_lock);
 
@@ -2228,7 +2276,7 @@ spa_load_verify_done(zio_t *zio)
 }
 
 /*
- * Maximum number of inflight bytes is the log2 faction of the arc size.
+ * Maximum number of inflight bytes is the log2 fraction of the arc size.
  * By default, we set it to 1/16th of the arc.
  */
 int spa_load_verify_shift = 4;
@@ -2682,7 +2730,7 @@ spa_activity_check_duration(spa_t *spa, uberblock_t *ub)
 
 	} else if (MMP_VALID(ub)) {
 		/*
-		 * zfs-0.7 compatability case
+		 * zfs-0.7 compatibility case
 		 */
 
 		import_delay = MAX(import_delay, (multihost_interval +
@@ -3984,7 +4032,7 @@ spa_ld_check_for_config_update(spa_t *spa, uint64_t config_cache_txg,
 			need_update = B_TRUE;
 
 	/*
-	 * Update the config cache asychronously in case we're the
+	 * Update the config cache asynchronously in case we're the
 	 * root pool, in which case the config cache isn't writable yet.
 	 */
 	if (need_update)
@@ -4297,7 +4345,7 @@ spa_load_impl(spa_t *spa, spa_import_type_t type, char **ereport)
 			return (error);
 
 		/*
-		 * Redo the loading process process again with the
+		 * Redo the loading process again with the
 		 * checkpointed uberblock.
 		 */
 		spa_ld_prepare_for_reload(spa);
@@ -5266,6 +5314,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	uint64_t version, obj;
 	boolean_t has_features;
 	boolean_t has_encryption;
+	boolean_t has_allocclass;
 	spa_feature_t feat;
 	char *feat_name;
 	char *poolname;
@@ -5310,6 +5359,7 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 
 	has_features = B_FALSE;
 	has_encryption = B_FALSE;
+	has_allocclass = B_FALSE;
 	for (nvpair_t *elem = nvlist_next_nvpair(props, NULL);
 	    elem != NULL; elem = nvlist_next_nvpair(props, elem)) {
 		if (zpool_prop_feature(nvpair_name(elem))) {
@@ -5319,6 +5369,8 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 			VERIFY0(zfeature_lookup_name(feat_name, &feat));
 			if (feat == SPA_FEATURE_ENCRYPTION)
 				has_encryption = B_TRUE;
+			if (feat == SPA_FEATURE_ALLOCATION_CLASSES)
+				has_allocclass = B_TRUE;
 		}
 	}
 
@@ -5331,6 +5383,12 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 			mutex_exit(&spa_namespace_lock);
 			return (error);
 		}
+	}
+	if (!has_allocclass && zfs_special_devs(nvroot)) {
+		spa_deactivate(spa);
+		spa_remove(spa);
+		mutex_exit(&spa_namespace_lock);
+		return (ENOTSUP);
 	}
 
 	if (has_features || nvlist_lookup_uint64(props,
@@ -6365,7 +6423,7 @@ spa_vdev_attach(spa_t *spa, uint64_t guid, nvlist_t *nvroot, int replacing)
 	 * ensure that dmu_sync-ed blocks have been stitched into the
 	 * respective datasets.
 	 */
-	error = dsl_resilver_restart(spa->spa_dsl_pool, dtl_max_txg);
+	error = dsl_scan_restart_resilver(spa->spa_dsl_pool, dtl_max_txg);
 	if (error != 0)
 		return (spa_vdev_exit(spa, newrootvd, txg, error));
 
@@ -6443,9 +6501,9 @@ spa_vdev_attach(spa_t *spa, uint64_t guid, nvlist_t *nvroot, int replacing)
 	 */
 	if (dsl_scan_resilvering(spa_get_dsl(spa)) &&
 	    spa_feature_is_enabled(spa, SPA_FEATURE_RESILVER_DEFER))
-		vdev_set_deferred_resilver(spa, newvd);
+		vdev_defer_resilver(newvd);
 	else
-		dsl_resilver_restart(spa->spa_dsl_pool, dtl_max_txg);
+		dsl_scan_restart_resilver(spa->spa_dsl_pool, dtl_max_txg);
 
 	if (spa->spa_bootfs)
 		spa_event_notify(spa, newvd, NULL, ESC_ZFS_BOOTFS_VDEV_ATTACH);
@@ -7680,7 +7738,7 @@ spa_async_thread(void *arg)
 	if (tasks & SPA_ASYNC_RESILVER &&
 	    (!dsl_scan_resilvering(dp) ||
 	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_RESILVER_DEFER)))
-		dsl_resilver_restart(dp, 0);
+		dsl_scan_restart_resilver(dp, 0);
 
 	if (tasks & SPA_ASYNC_INITIALIZE_RESTART) {
 		mutex_enter(&spa_namespace_lock);
@@ -7794,6 +7852,12 @@ spa_async_request(spa_t *spa, int task)
 	mutex_enter(&spa->spa_async_lock);
 	spa->spa_async_tasks |= task;
 	mutex_exit(&spa->spa_async_lock);
+}
+
+int
+spa_async_tasks(spa_t *spa)
+{
+	return (spa->spa_async_tasks);
 }
 
 /*
@@ -8150,7 +8214,7 @@ spa_sync_props(void *arg, dmu_tx_t *tx)
 		case ZPOOL_PROP_READONLY:
 		case ZPOOL_PROP_CACHEFILE:
 			/*
-			 * 'readonly' and 'cachefile' are also non-persisitent
+			 * 'readonly' and 'cachefile' are also non-persistent
 			 * properties.
 			 */
 			break;
@@ -9005,7 +9069,7 @@ EXPORT_SYMBOL(spa_inject_delref);
 EXPORT_SYMBOL(spa_scan_stat_init);
 EXPORT_SYMBOL(spa_scan_get_stats);
 
-/* device maniion */
+/* device manipulation */
 EXPORT_SYMBOL(spa_vdev_add);
 EXPORT_SYMBOL(spa_vdev_attach);
 EXPORT_SYMBOL(spa_vdev_detach);
