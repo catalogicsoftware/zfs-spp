@@ -1725,9 +1725,9 @@ zpool_do_export(int argc, char **argv)
 		usage(B_FALSE);
 	}
 
-	verify(sharetab_lock() == 0);
+	verify((sharetab_lock() == 0) | (sharetab_lock() == 13));
 	ret = for_each_pool(argc, argv, B_TRUE, NULL, zpool_export_one, &cb);
-	verify(sharetab_unlock() == 0);
+	verify((sharetab_unlock() == 0) | (sharetab_lock() == 13));
 
 	return (ret);
 }
