@@ -1328,6 +1328,7 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags,
 		if (err != 0) {
 			DB_DNODE_EXIT(db);
 			mutex_exit(&db->db_mtx);
+			dmu_buf_unlock_parent(db, dblt, tag);
 			return (err);
 		}
 
@@ -1386,7 +1387,6 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags,
 		return (0);
 	}
 
-
 	SET_BOOKMARK(&zb, dmu_objset_id(db->db_objset),
 	    db->db.db_object, db->db_level, db->db_blkid);
 
@@ -1407,8 +1407,8 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags,
 	err = dbuf_read_verify_dnode_crypt(db, flags);
 	if (err != 0) {
 		DB_DNODE_EXIT(db);
-		dmu_buf_unlock_parent(db, dblt, tag);
 		mutex_exit(&db->db_mtx);
+		dmu_buf_unlock_parent(db, dblt, tag);
 		return (err);
 	}
 
