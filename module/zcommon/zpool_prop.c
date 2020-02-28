@@ -117,6 +117,8 @@ zpool_prop_init(void)
 	    PROP_DEFAULT, ZFS_TYPE_POOL, "<size>", "DEDUPSIZEMAX");
 	zprop_register_number(ZPOOL_PROP_DEDUP_MAX_ENTRIES, "dedupentrymax", 0,
 	    PROP_DEFAULT, ZFS_TYPE_POOL, "<numobjects>", "DEDUPENTRYMAX");
+	zprop_register_number(ZPOOL_PROP_DEDUP_TYPE, "deduptype", 0,
+	    PROP_DEFAULT, ZFS_TYPE_POOL, "<0=ddtlog, 1=ddtzap>", "DEDUPTYPE");
 
 	/* default index (boolean) properties */
 	zprop_register_index(ZPOOL_PROP_DELEGATION, "delegation", 1,

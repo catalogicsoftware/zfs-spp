@@ -1152,7 +1152,7 @@ ddt_sync_entry(ddt_t *ddt, ddt_entry_t *dde, dmu_tx_t *tx, uint64_t txg)
 	ddt_phys_t *ddp = dde->dde_phys;
 	ddt_key_t *ddk = &dde->dde_key;
 	enum ddt_type otype = dde->dde_type;
-	enum ddt_type ntype = DDT_TYPE_CURRENT;
+	enum ddt_type ntype = ddt->ddt_spa->spa_dedup_type;
 	enum ddt_class oclass = dde->dde_class;
 	enum ddt_class nclass;
 	uint64_t total_refcnt = 0;
@@ -1306,15 +1306,15 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
   	 * unique entries they want for their own data, depending on what kind
   	 * of writes they are doing.
   	 */
-	if (ddt_object_exists(ddt, DDT_TYPE_CURRENT, DDT_CLASS_UNIQUE) && (ddt_unique_max != 0)) {
+	if (ddt_object_exists(ddt, spa->spa_dedup_type, DDT_CLASS_UNIQUE) && (ddt_unique_max != 0)) {
 		uint64_t count = 0;
-		VERIFY(ddt_object_count(ddt, DDT_TYPE_CURRENT, DDT_CLASS_UNIQUE, &count) == 0);
+		VERIFY(ddt_object_count(ddt, spa->spa_dedup_type, DDT_CLASS_UNIQUE, &count) == 0);
 		for (int64_t i = 0; i < (int64_t)(count - ddt_unique_max); i++) {
 			ddt_entry_t rmdde;
 			bzero(&rmdde, sizeof (ddt_entry_t));
 			uint64_t walk = spa_get_random(UINT64_MAX);
 			if (ddt_object_walk(ddt,
-			    DDT_TYPE_CURRENT, DDT_CLASS_UNIQUE,
+			    spa->spa_dedup_type, DDT_CLASS_UNIQUE,
 			    &walk, &rmdde) == 0) {
 				enum ddt_phys_type t;
 				for (t = 0; t < DDT_PHYS_TYPES; t++) {
@@ -1345,7 +1345,7 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 				}
 				ddt_stat_update(ddt, &rmdde, -1);
 				VERIFY0(ddt_object_remove(ddt,
-				    DDT_TYPE_CURRENT, DDT_CLASS_UNIQUE,
+				    spa->spa_dedup_type, DDT_CLASS_UNIQUE,
 				    &rmdde, tx));
 			}
 		}

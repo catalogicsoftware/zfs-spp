@@ -42,8 +42,8 @@ struct abd;
  * On-disk DDT formats, in the desired search order (newest version first).
  */
 enum ddt_type {
-	DDT_TYPE_LOG,
 	DDT_TYPE_ZAP,
+	DDT_TYPE_LOG,
 	DDT_TYPES
 };
 
