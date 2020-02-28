@@ -413,6 +413,7 @@ struct spa {
 	uint64_t	spa_dedup_max_size;	/* Target maximum size of DDT */
 	uint64_t	spa_dedup_entries;	/* Current entries in DDT */
 	uint64_t	spa_dedup_entry_size;	/* Average size of DDT entry */
+	uint64_t	spa_dedup_type;		/* DDT Type */
 
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements
