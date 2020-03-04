@@ -1461,6 +1461,11 @@ ddt_walk(spa_t *spa, ddt_bookmark_t *ddb, ddt_entry_t *dde)
 	return (SET_ERROR(ENOENT));
 }
 
+int
+ddt_entry_size(void) {
+	return (sizeof (struct ddt_entry));
+}
+
 #if defined(_KERNEL)
 module_param(zfs_dedup_prefetch, int, 0644);
 MODULE_PARM_DESC(zfs_dedup_prefetch, "Enable prefetching dedup-ed blks");
