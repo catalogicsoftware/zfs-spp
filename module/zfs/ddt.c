@@ -802,7 +802,7 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add, boolean_t nogrow,
 
 	dde = avl_find(&ddt->ddt_tree, &dde_search, &where);
 	if (dde == NULL) {
-		if (!add)
+		if (!add || nogrow)
 			return (NULL);
 		dde = ddt_alloc(&dde_search.dde_key);
 		avl_insert(&ddt->ddt_tree, dde, where);
