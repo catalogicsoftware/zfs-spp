@@ -30,7 +30,7 @@
 #include <sys/zap.h>
 #include <sys/dmu_tx.h>
 
-int ddt_log_blksz = 128*1024;
+int ddt_log_blksz = 256*1024;
 int ddt_log_maxinflation_pct = 200;
 
 typedef struct ddt_log_phys {
