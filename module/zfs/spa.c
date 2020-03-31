@@ -5970,6 +5970,9 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (force_removal) {
 		/* Ensure that references see this change after this. */
 		spa_set_killer(spa, curthread);
+		cmn_err(CE_WARN, "Pool '%s' has been marked for forced"
+		    " export. spa_sync_on = %d\n", spa_name(spa),
+		    spa->spa_sync_on);
 	}
 	mutex_exit(&spa_namespace_lock);
 	spa_async_suspend(spa);
@@ -6066,6 +6069,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 		if (spa->spa_root_vdev != NULL) {
 			vdev_t *rvd = spa->spa_root_vdev;
 			vdev_initialize_stop_all(rvd, VDEV_INITIALIZE_ACTIVE);
+			cmn_err(CE_WARN, "Pool '%s': stopping all TRIM"
+			    " activity\n", spa_name(spa));
 			vdev_trim_stop_all(rvd, VDEV_TRIM_ACTIVE);
 			vdev_autotrim_stop_all(spa);
 		}
@@ -6116,11 +6121,16 @@ export_spa:
 	}
 
 	mutex_exit(&spa_namespace_lock);
+	cmn_err(CE_WARN, "Pool '%s' successfully finished spa_export_common\n",
+	    spa_name(spa));
 	return (0);
 
 fail:
-	if (force_removal)
+	if (force_removal) {
 		spa_set_killer(spa, NULL);
+		cmn_err(CE_WARN, "Pool '%s' failed to force export.\n",
+		    spa_name(spa));
+	}
 	spa_async_resume(spa);
 	mutex_exit(&spa_namespace_lock);
 	return (error);
