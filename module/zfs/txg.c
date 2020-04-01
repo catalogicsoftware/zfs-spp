@@ -732,8 +732,10 @@ txg_wait_synced_tx(dsl_pool_t *dp, uint64_t txg, dmu_tx_t *tx,
 		 * data isn't going to be pushed.
 		 */
 		if (spa_suspended(spa)) {
+			dprintf("txg_wait_synced_tx entering spa_suspended check");
 			if ((flags & TXG_WAIT_F_NOSUSPEND) ||
 			    spa_exiting_any(spa)) {
+				dprintf("txg_wait_synced_tx entering spa_suspended and is exiting check"); 
 				error = SET_ERROR(EAGAIN);
 			}
 		}
