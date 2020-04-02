@@ -726,7 +726,6 @@ txg_wait_synced_tx(dsl_pool_t *dp, uint64_t txg, dmu_tx_t *tx,
 		    "tx_synced=%llu waiting=%llu dp=%p\n",
 		    dp_tx->tx_synced_txg, dp_tx->tx_sync_txg_waiting, dp);
 		cv_broadcast(&dp_tx->tx_sync_more_cv);
-		cv_wait_io(&dp_tx->tx_sync_done_cv, &dp_tx->tx_sync_lock);
 		/*
 		 * If we are suspended and exiting, give up, because our
 		 * data isn't going to be pushed.
@@ -739,8 +738,10 @@ txg_wait_synced_tx(dsl_pool_t *dp, uint64_t txg, dmu_tx_t *tx,
 		}
 		if (error == 0 && os != NULL && dmu_objset_exiting(os))
 			error = SET_ERROR(EAGAIN);
-		if (error == 0)
-			cv_wait(&dp_tx->tx_sync_done_cv, &dp_tx->tx_sync_lock);
+		if (error == 0) {
+			cv_wait_io(&dp_tx->tx_sync_done_cv,
+			    &dp_tx->tx_sync_lock);
+		}
 	}
 	mutex_exit(&dp_tx->tx_sync_lock);
 	return (error);
