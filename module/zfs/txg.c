@@ -844,7 +844,7 @@ txg_force_export(spa_t *spa)
 	ASSERT(spa_exiting_any(spa));
 	txg = tx->tx_synced_txg + 1;
 	for (t = 0; t < TXG_SIZE; t++) {
-		txg_wait_open(dp, txg + t, B_TRUE);
+		txg_wait_open(dp, txg + t, B_FALSE);
 
 		for (complete = B_FALSE; !complete;) {
 			zio_cancel(spa);
