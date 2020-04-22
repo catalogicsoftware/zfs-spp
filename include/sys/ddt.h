@@ -210,6 +210,7 @@ extern void ddt_histogram_add(ddt_histogram_t *dst, const ddt_histogram_t *src);
 extern void ddt_histogram_stat(ddt_stat_t *dds, const ddt_histogram_t *ddh);
 extern boolean_t ddt_histogram_empty(const ddt_histogram_t *ddh);
 extern void ddt_get_dedup_object_stats(spa_t *spa, ddt_object_t *ddo);
+extern uint64_t ddt_get_ddt_dsize(spa_t *spa);
 extern void ddt_get_dedup_histogram(spa_t *spa, ddt_histogram_t *ddh);
 extern void ddt_get_dedup_stats(spa_t *spa, ddt_stat_t *dds_total);
 extern void ddt_stat_update(ddt_t *ddt, ddt_entry_t *dde, uint64_t neg);
@@ -230,7 +231,8 @@ extern void ddt_enter(ddt_t *ddt);
 extern void ddt_exit(ddt_t *ddt);
 extern void ddt_init(void);
 extern void ddt_fini(void);
-extern ddt_entry_t *ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add);
+extern ddt_entry_t *ddt_lookup(ddt_t *ddt, const blkptr_t *bp,
+    boolean_t nogrow, boolean_t *addedp);
 extern void ddt_loadall(ddt_t *ddt);
 extern void ddt_prefetch(spa_t *spa, const blkptr_t *bp);
 extern void ddt_remove(ddt_t *ddt, ddt_entry_t *dde);
@@ -253,6 +255,9 @@ extern int ddt_object_update(ddt_t *ddt, enum ddt_type type,
 
 extern const ddt_ops_t ddt_zap_ops;
 extern const ddt_ops_t ddt_log_ops;
+
+extern void ddt_stat_update(ddt_t *ddt, ddt_entry_t *dde, uint64_t neg);
+extern int ddt_entry_size(void);
 
 #ifdef	__cplusplus
 }
