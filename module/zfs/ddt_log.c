@@ -30,7 +30,7 @@
 #include <sys/zap.h>
 #include <sys/dmu_tx.h>
 
-int ddt_log_blksz = 32*1024;
+int ddt_log_blksz = 4*1024;
 int ddt_log_maxinflation_pct = 200;
 
 typedef struct ddt_log_phys {
@@ -38,8 +38,8 @@ typedef struct ddt_log_phys {
 } ddt_log_phys_t;
 
 typedef struct ddt_log_entry_phys {
-	ddt_key_t dlep_key;
 	ddt_phys_t dlep_phys[DDT_PHYS_TYPES];
+	ddt_key_t dlep_key;
 } ddt_log_entry_phys_t;
 
 typedef struct ddt_tree_entry {
@@ -48,11 +48,11 @@ typedef struct ddt_tree_entry {
 } ddt_tree_entry_t;
 
 typedef struct ddt_log {
+	uint64_t dl_object;
+	avl_tree_t dl_tree;
 	dmu_buf_user_t dl_dbu;
 	objset_t *dl_os;
-	uint64_t dl_object;
 	dmu_buf_t *dl_dbuf;
-	avl_tree_t dl_tree;
 	kmutex_t dl_lock;
 	boolean_t dl_loaded;
 } ddt_log_t;
