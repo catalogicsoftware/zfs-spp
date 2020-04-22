@@ -3263,19 +3263,15 @@ zio_ddt_write(zio_t *zio)
 	ASSERT(!(zio->io_bp_override && (zio->io_flags & ZIO_FLAG_RAW)));
 
 	ddt_enter(ddt);
-	if (spa->spa_dedup_max_entries &&
-	    spa->spa_dedup_entries >= spa->spa_dedup_max_entries) {
+	if (spa->spa_dedup_max_size &&
+	    ddt_get_ddt_dsize(spa) >= spa->spa_dedup_max_size) {
+__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: spa_max=%zu dsize=%zu\n", spa->spa_dedup_max_size, ddt_get_ddt_dsize(spa));
 		/* Over the desired DDT size, set 'nogrow' flag */
 		dde = ddt_lookup(ddt, bp, B_TRUE, NULL);
 	} else {
 		dde = ddt_lookup(ddt, bp, B_FALSE, &added);
 	}
 	if (dde == NULL) {
-#if defined(_KERNEL) && defined(ZFS_DEBUG)
-		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__,
-		    "At ddt entries %zu of %zu, txg = %lu\n", spa->spa_dedup_entries,
-		    spa->spa_dedup_max_entries, txg);
-#endif
 		zp->zp_dedup = B_FALSE;
 		BP_SET_DEDUP(bp, B_FALSE);
 		ASSERT(!BP_GET_DEDUP(bp));
@@ -3287,13 +3283,8 @@ zio_ddt_write(zio_t *zio)
 	ddp = &dde->dde_phys[p];
 
 	if (added) {
-#if defined(_KERNEL) && defined(ZFS_DEBUG)
-		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__,
-			  "Increasing DDT entries from %zu to %zu\n",
-			spa->spa_dedup_entries,
-			spa->spa_dedup_entries + 1);
-#endif
-		spa->spa_dedup_entries++;
+		if (spa->spa_ddt_dsize != ~0ULL)
+			spa->spa_ddt_dsize += ddt_entry_size();
 	}
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
@@ -3424,41 +3415,43 @@ zio_ddt_free(zio_t *zio)
 		    (long long)ddt_phys_total_refcnt(dde));
 #endif
 		/*
-  		 * ddt_phys_select() failed, because this entry was evicted
-  		 * from the DDT (see ddt_sync_table()).  It can fail in two
-  		 * cases: the dde is "fresh" (there's no corresponding
-  		 * on-disk entry, and the dde's refcount is zero); or the
-  		 * dde's phys birth time doesn't match the bp's (after our
-  		 * entry was evicted, a block with the same checksum was
-  		 * re-added to the DDT). In this case, we know the
-  		 * effective refcount is currently 1 (because we only evict
-  		 * from DDT_CLASS_UNIQUE), so it is being effectively
-  		 * decremented to 0 and we need to free this block.
-  		 */
+		 * ddt_phys_select() failed, because this entry was evicted
+		 * from the DDT (see ddt_sync_table()).  It can fail in two
+		 * cases: the dde is "fresh" (there's no corresponding
+		 * on-disk entry, and the dde's refcount is zero); or the
+		 * dde's phys birth time doesn't match the bp's (after our
+		 * entry was evicted, a block with the same checksum was
+		 * re-added to the DDT). In this case, we know the
+		 * effective refcount is currently 1 (because we only evict
+		 * from DDT_CLASS_UNIQUE), so it is being effectively
+		 * decremented to 0 and we need to free this block.
+		 */
 		zio->io_pipeline = ZIO_FREE_PIPELINE;
 		if (zio->io_child_type > ZIO_CHILD_GANG && BP_IS_GANG(bp))
 			zio->io_pipeline |= ZIO_GANG_STAGES;
 		if (added) {
 			/*
-  			 * Our call to ddt_lookup() added the in-memory
-  			 * dde.  We need to undo this, because we are not
-  			 * actually modifying the on-disk DDT.  This is
-  			 * true whether the in-memory dde is "fresh", or it
-  			 * corresponds to an on-disk entry in the DDT
-  			 * (caused by the evict and re-add case).
-  			 */
+			 * Our call to ddt_lookup() added the in-memory
+			 * dde.  We need to undo this, because we are not
+			 * actually modifying the on-disk DDT.  This is
+			 * true whether the in-memory dde is "fresh", or it
+			 * corresponds to an on-disk entry in the DDT
+			 * (caused by the evict and re-add case).
+			 */
 			if (ddt_phys_total_refcnt(dde) > 0)
 				ddt_stat_update(ddt, dde, 0);
-			/* If another thread called ddt_lookup()
-  			 * on a bp with the same checksum, they could be
-  			 * referencing this dde (in ddt_lookup(), waiting
-  			 * for us to drop the ddt_lock).  When we
-  			 * free the dde, they will dereference freed
-  			 * memory. We can call ddt_remove(ddt,dde), but we
-  			 * risk racing. If we do not call it, then the dde
-  			 * will live until the end of the txg, which is
-  			 * minimal risk.
-  			 */
+
+			/*
+			 * If another thread called ddt_lookup()
+			 * on a bp with the same checksum, they could be
+			 * referencing this dde (in ddt_lookup(), waiting
+			 * for us to drop the ddt_lock).  When we
+			 * free the dde, they will dereference freed
+			 * memory. We can call ddt_remove(ddt,dde), but we
+			 * risk racing. If we do not call it, then the dde
+			 * will live until the end of the txg, which is
+			 * minimal risk.
+			 */
 		}
 	}
 	ddt_exit(ddt);

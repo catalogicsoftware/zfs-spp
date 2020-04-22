@@ -513,7 +513,21 @@ ddt_get_dedup_object_stats(spa_t *spa, ddt_object_t *ddo_total)
 			}
 		}
 	}
+
+	spa->spa_ddt_dsize = ddo_total->ddo_dspace;
 }
+
+uint64_t
+ddt_get_ddt_dsize(spa_t *spa)
+{
+	ddt_object_t ddo_total;
+
+	if (spa->spa_ddt_dsize == ~0ULL)
+		ddt_get_dedup_object_stats(spa, &ddo_total);
+
+	return (spa->spa_ddt_dsize);
+}
+
 
 void
 ddt_get_dedup_histogram(spa_t *spa, ddt_histogram_t *ddh)
@@ -952,7 +966,6 @@ int
 ddt_load(spa_t *spa)
 {
 	int error;
-	ddt_object_t ddo_total = { 0 };
 
 	ddt_create(spa);
 
@@ -988,11 +1001,8 @@ ddt_load(spa_t *spa)
 		bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 		    sizeof (ddt->ddt_histogram));
 		spa->spa_dedup_dspace = ~0ULL;
+		spa->spa_ddt_dsize = ~0ULL;
 	}
-
-	ddt_get_dedup_object_stats(spa, &ddo_total);
-	spa->spa_dedup_entries = ddo_total.ddo_count;
-	spa->spa_dedup_entry_size = ddo_total.ddo_mspace;
 
 	return (0);
 }
@@ -1367,6 +1377,7 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 	bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 	    sizeof (ddt->ddt_histogram));
 	spa->spa_dedup_dspace = ~0ULL;
+	spa->spa_ddt_dsize = ~0ULL;
 }
 
 void
@@ -1375,7 +1386,6 @@ ddt_sync(spa_t *spa, uint64_t txg)
 	dsl_scan_t *scn = spa->spa_dsl_pool->dp_scan;
 	dmu_tx_t *tx;
 	zio_t *rio;
-	ddt_object_t ddo_total = { 0 };
 
 	ASSERT(spa_syncing_txg(spa) == txg);
 
@@ -1411,10 +1421,6 @@ ddt_sync(spa_t *spa, uint64_t txg)
 	 */
 	ASSERT3P(scn->scn_zio_root, ==, NULL);
 	scn->scn_zio_root = rio;
-
-	ddt_get_dedup_object_stats(spa, &ddo_total);
-	spa->spa_dedup_entries = ddo_total.ddo_count;
-	spa->spa_dedup_entry_size = ddo_total.ddo_mspace;
 
 	for (enum zio_checksum c = 0; c < ZIO_CHECKSUM_FUNCTIONS; c++) {
 		ddt_t *ddt = spa->spa_ddt[c];
@@ -1459,8 +1465,9 @@ ddt_walk(spa_t *spa, ddt_bookmark_t *ddb, ddt_entry_t *dde)
 }
 
 int
-ddt_entry_size(void) {
-	return (sizeof (struct ddt_entry));
+ddt_entry_size(void)
+{
+	return (sizeof (struct ddt_phys));
 }
 
 #if defined(_KERNEL)
