@@ -514,7 +514,8 @@ ddt_get_dedup_object_stats(spa_t *spa, ddt_object_t *ddo_total)
 		}
 	}
 
-	spa->spa_ddt_dsize = ddo_total->ddo_dspace;
+	spa->spa_dedup_table_size = ddo_total->ddo_dspace;
+
 }
 
 uint64_t
@@ -522,10 +523,10 @@ ddt_get_ddt_dsize(spa_t *spa)
 {
 	ddt_object_t ddo_total;
 
-	if (spa->spa_ddt_dsize == ~0ULL)
+	if (spa->spa_dedup_table_size == ~0ULL)
 		ddt_get_dedup_object_stats(spa, &ddo_total);
 
-	return (spa->spa_ddt_dsize);
+	return (spa->spa_dedup_table_size);
 }
 
 
@@ -802,7 +803,7 @@ ddt_loadall(ddt_t *ddt)
 }
 
 ddt_entry_t *
-ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t nogrow, boolean_t *addedp)
+ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add)
 {
 	ddt_entry_t *dde, dde_search;
 	enum ddt_type type;
@@ -846,7 +847,7 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t nogrow, boolean_t *addedp)
 
 	ddt_enter(ddt);
 
-	if (error == ENOENT && nogrow == B_TRUE) {
+	if (error == ENOENT && add == B_FALSE) {
 		avl_remove(&ddt->ddt_tree, dde);
 		dde->dde_loading = B_FALSE;
 		ddt_free(dde);
@@ -863,8 +864,6 @@ ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t nogrow, boolean_t *addedp)
 
 	if (error == 0)
 		ddt_stat_update(ddt, dde, -1ULL);
-	else if (error == ENOENT && addedp != NULL)
-		*addedp = B_TRUE;
 
 	cv_broadcast(&dde->dde_cv);
 
@@ -1001,7 +1000,7 @@ ddt_load(spa_t *spa)
 		bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 		    sizeof (ddt->ddt_histogram));
 		spa->spa_dedup_dspace = ~0ULL;
-		spa->spa_ddt_dsize = ~0ULL;
+		spa->spa_dedup_table_size = ~0ULL;
 	}
 
 	return (0);
@@ -1377,7 +1376,7 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 	bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 	    sizeof (ddt->ddt_histogram));
 	spa->spa_dedup_dspace = ~0ULL;
-	spa->spa_ddt_dsize = ~0ULL;
+	spa->spa_dedup_table_size = ~0ULL;
 }
 
 void
@@ -1468,6 +1467,18 @@ int
 ddt_entry_size(void)
 {
 	return (sizeof (struct ddt_phys));
+}
+
+/*
+ * Check the DDT quota (if one exists)
+ */
+boolean_t
+ddt_check_overquota(spa_t *spa)
+{
+	if (spa->spa_dedup_table_quota &&
+	    ddt_get_ddt_dsize(spa) >= spa->spa_dedup_table_quota)
+		return (B_TRUE);
+	return (B_FALSE);
 }
 
 #if defined(_KERNEL)
