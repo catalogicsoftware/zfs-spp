@@ -354,9 +354,6 @@ spa_prop_get_config(spa_t *spa, nvlist_t **nvp)
 		spa_prop_add_list(*nvp, ZPOOL_PROP_DEDUP_TYPE, NULL,
 		    spa->spa_dedup_type, src);
 
-		spa_prop_add_list(*nvp, ZPOOL_PROP_DEDUP_CUR_SIZE, NULL,
-		    ddt_get_ddt_dsize(spa), src);
-
 		spa_prop_add_list(*nvp, ZPOOL_PROP_HEALTH, NULL,
 		    rvd->vdev_state, src);
 
@@ -607,7 +604,6 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 			break;
 
 		case ZPOOL_PROP_DEDUP_TYPE:
-		case ZPOOL_PROP_DEDUP_MAX_SIZE:
 			error = nvpair_value_uint64(elem, &intval);
 			break;
 
@@ -3786,8 +3782,6 @@ spa_ld_get_props(spa_t *spa)
 		spa_prop_find(spa, ZPOOL_PROP_FAILUREMODE, &spa->spa_failmode);
 		spa_prop_find(spa, ZPOOL_PROP_AUTOEXPAND, &spa->spa_autoexpand);
 		spa_prop_find(spa, ZPOOL_PROP_DEDUP_TYPE, &spa->spa_dedup_type);
-		spa_prop_find(spa, ZPOOL_PROP_DEDUP_MAX_SIZE,
-		    &spa->spa_dedup_max_size);
 		spa_prop_find(spa, ZPOOL_PROP_MULTIHOST, &spa->spa_multihost);
 		spa_prop_find(spa, ZPOOL_PROP_DEDUPDITTO,
 		    &spa->spa_dedup_ditto);
@@ -5583,8 +5577,6 @@ spa_create(const char *pool, nvlist_t *nvroot, nvlist_t *props,
 	spa->spa_multihost = zpool_prop_default_numeric(ZPOOL_PROP_MULTIHOST);
 	spa->spa_autotrim = zpool_prop_default_numeric(ZPOOL_PROP_AUTOTRIM);
 	spa->spa_dedup_type = zpool_prop_default_numeric(ZPOOL_PROP_DEDUP_TYPE);
-	spa->spa_dedup_max_size =
-	    zpool_prop_default_numeric(ZPOOL_PROP_DEDUP_MAX_SIZE);
 
 	if (props != NULL) {
 		spa_configfile_set(spa, props, B_FALSE);
@@ -8319,8 +8311,6 @@ spa_sync_props(void *arg, dmu_tx_t *tx)
 				break;
 			case ZPOOL_PROP_DEDUP_TYPE:
 				spa->spa_dedup_type = intval;
-			case ZPOOL_PROP_DEDUP_MAX_SIZE:
-				spa->spa_dedup_max_size = intval;
 				break;
 			default:
 				break;
