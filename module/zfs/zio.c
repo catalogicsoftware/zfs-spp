@@ -3264,7 +3264,7 @@ zio_ddt_write(zio_t *zio)
 	ddt_enter(ddt);
 	if (ddt_check_overquota(spa) == B_TRUE) {
 		/* Over the desired DDT size, do not grow the table */
-		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: spa_max=%zu dsize=%zu\n", spa->spa_dedup_max_size, ddt_get_ddt_dsize(spa));
+		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: ddt_quota=%zu ddt_size=%zu\n", spa_dedup_table_quota, ddt_get_ddt_dsize(spa));
 		dde = ddt_lookup(ddt, bp, B_FALSE);
 	} else {
 		/* It's ok to grow the table. */
