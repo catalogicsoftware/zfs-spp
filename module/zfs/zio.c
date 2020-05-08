@@ -3255,7 +3255,6 @@ zio_ddt_write(zio_t *zio)
 	ddt_t *ddt = ddt_select(spa, bp);
 	ddt_entry_t *dde;
 	ddt_phys_t *ddp;
-	boolean_t added = B_FALSE;
 
 	ASSERT(BP_GET_DEDUP(bp));
 	ASSERT(BP_GET_CHECKSUM(bp) == zp->zp_checksum);
@@ -3263,18 +3262,18 @@ zio_ddt_write(zio_t *zio)
 	ASSERT(!(zio->io_bp_override && (zio->io_flags & ZIO_FLAG_RAW)));
 
 	ddt_enter(ddt);
-	if (spa->spa_dedup_max_size &&
-	    ddt_get_ddt_dsize(spa) >= spa->spa_dedup_max_size) {
-__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: spa_max=%zu dsize=%zu\n", spa->spa_dedup_max_size, ddt_get_ddt_dsize(spa));
-		/* Over the desired DDT size, set 'nogrow' flag */
-		dde = ddt_lookup(ddt, bp, B_TRUE, NULL);
+	if (ddt_check_overquota(spa) == B_TRUE) {
+		/* Over the desired DDT size, do not grow the table */
+		__dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: ddt_quota=%zu ddt_size=%zu\n", spa->spa_dedup_table_quota, ddt_get_ddt_dsize(spa));
+		dde = ddt_lookup(ddt, bp, B_FALSE);
 	} else {
-		dde = ddt_lookup(ddt, bp, B_FALSE, &added);
+		/* It's ok to grow the table. */
+		dde = ddt_lookup(ddt, bp, B_TRUE);
 	}
+
 	if (dde == NULL) {
 		zp->zp_dedup = B_FALSE;
 		BP_SET_DEDUP(bp, B_FALSE);
-		ASSERT(!BP_GET_DEDUP(bp));
 		zio->io_pipeline = ZIO_WRITE_PIPELINE;
 		ddt_exit(ddt);
 		return (zio);
@@ -3282,9 +3281,10 @@ __dprintf(B_TRUE, __FILE__, __FUNCTION__, __LINE__, "Skipping dedup: spa_max=%zu
 
 	ddp = &dde->dde_phys[p];
 
-	if (added) {
-		if (spa->spa_ddt_dsize != ~0ULL)
-			spa->spa_ddt_dsize += ddt_entry_size();
+	/* If the refcnt is 0, then we just added it. */
+	if (ddt_phys_total_refcnt(dde) == 0) {
+		if (spa->spa_dedup_table_size != ~0ULL)
+			spa->spa_dedup_table_size += ddt_entry_size();
 	}
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {
@@ -3388,13 +3388,12 @@ zio_ddt_free(zio_t *zio)
 	ddt_t *ddt = ddt_select(spa, bp);
 	ddt_entry_t *dde = NULL;
 	ddt_phys_t *ddp = NULL;
-	boolean_t added = B_FALSE;
 
 	ASSERT(BP_GET_DEDUP(bp));
 	ASSERT(zio->io_child_type == ZIO_CHILD_LOGICAL);
 
 	ddt_enter(ddt);
-	freedde = dde = ddt_lookup(ddt, bp, B_FALSE, &added);
+	freedde = dde = ddt_lookup(ddt, bp, B_TRUE);
 	if (dde) {
 		ddp = ddt_phys_select(dde, bp);
 	}
@@ -3429,7 +3428,7 @@ zio_ddt_free(zio_t *zio)
 		zio->io_pipeline = ZIO_FREE_PIPELINE;
 		if (zio->io_child_type > ZIO_CHILD_GANG && BP_IS_GANG(bp))
 			zio->io_pipeline |= ZIO_GANG_STAGES;
-		if (added) {
+		if (ddt_phys_total_refcnt(dde) == 0) {
 			/*
 			 * Our call to ddt_lookup() added the in-memory
 			 * dde.  We need to undo this, because we are not
@@ -3438,8 +3437,7 @@ zio_ddt_free(zio_t *zio)
 			 * corresponds to an on-disk entry in the DDT
 			 * (caused by the evict and re-add case).
 			 */
-			if (ddt_phys_total_refcnt(dde) > 0)
-				ddt_stat_update(ddt, dde, 0);
+			ddt_stat_update(ddt, dde, 0);
 
 			/*
 			 * If another thread called ddt_lookup()

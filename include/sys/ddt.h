@@ -214,7 +214,7 @@ extern uint64_t ddt_get_ddt_dsize(spa_t *spa);
 extern void ddt_get_dedup_histogram(spa_t *spa, ddt_histogram_t *ddh);
 extern void ddt_get_dedup_stats(spa_t *spa, ddt_stat_t *dds_total);
 extern void ddt_stat_update(ddt_t *ddt, ddt_entry_t *dde, uint64_t neg);
-
+extern boolean_t ddt_check_overquota(spa_t *spa);
 extern uint64_t ddt_get_dedup_dspace(spa_t *spa);
 extern uint64_t ddt_get_pool_dedup_ratio(spa_t *spa);
 extern uint64_t ddt_get_pool_dedup_cached(spa_t *spa);
@@ -231,8 +231,7 @@ extern void ddt_enter(ddt_t *ddt);
 extern void ddt_exit(ddt_t *ddt);
 extern void ddt_init(void);
 extern void ddt_fini(void);
-extern ddt_entry_t *ddt_lookup(ddt_t *ddt, const blkptr_t *bp,
-    boolean_t nogrow, boolean_t *addedp);
+extern ddt_entry_t *ddt_lookup(ddt_t *ddt, const blkptr_t *bp, boolean_t add);
 extern void ddt_loadall(ddt_t *ddt);
 extern void ddt_prefetch(spa_t *spa, const blkptr_t *bp);
 extern void ddt_remove(ddt_t *ddt, ddt_entry_t *dde);
