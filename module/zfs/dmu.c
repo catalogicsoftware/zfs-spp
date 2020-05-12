@@ -1129,6 +1129,9 @@ dmu_write(objset_t *os, uint64_t object, uint64_t offset, uint64_t size,
 	int numbufs;
 	int error;
 
+	if (spa_exiting_any(os->os_spa))
+		return;
+
 	if (size == 0)
 		return;
 
