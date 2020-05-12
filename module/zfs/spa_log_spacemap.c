@@ -717,7 +717,7 @@ spa_flush_metaslabs(spa_t *spa, dmu_tx_t *tx)
 {
 	uint64_t txg = dmu_tx_get_txg(tx);
 
-	if (spa_exiting(spa))
+	if (spa_exiting_any(spa))
 		return;
 
 	if (spa_sync_pass(spa) != 1)
