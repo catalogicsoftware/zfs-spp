@@ -6016,6 +6016,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (!force_removal && spa->spa_sync_on) {
 		error = txg_wait_synced_tx(spa->spa_dsl_pool, 0,
 		    NULL, TXG_WAIT_F_NOSUSPEND);
+		cmn_err(CE_WARN, "txg_wait_synced_tx(%s) = %d",
+		    spa_name(spa), error);
 		if (error != 0)
 			goto fail;
 		spa_evicting_os_wait(spa);
@@ -6048,6 +6050,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (!spa_refcount_zero(spa) || (spa->spa_inject_ref != 0)) {
 		VERIFY(!force_removal);
 		error = SET_ERROR(EBUSY);
+		cmn_err(CE_WARN, ""spa_export_common(%s) = %d, refcount not zero",
+		    spa_name(spa), error);
 		goto fail;
 	}
 
@@ -6111,7 +6115,9 @@ export_spa:
 		cmn_err(CE_WARN, "spa_export_common(%s) spa_unload(, %d)",
 		    spa_name(spa), txg_how);
 		error = spa_unload(spa, txg_how);
-		if (error != 0)
+		cmn_err(CE_WARN, "spa_export_common(%s) spa_unload = %d",
+		    spa_name(spa), error);
+		if (!spa_exiting_any(spa) && error != 0)
 			goto fail;
 		spa_deactivate(spa);
 	}
