@@ -3752,6 +3752,9 @@ metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 {
 	spa_t *spa = msp->ms_group->mg_vd->vdev_spa;
 
+	if (spa_exiting(spa))
+		return (B_FALSE);
+
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
 	ASSERT3U(spa_sync_pass(spa), ==, 1);
 	ASSERT(spa_feature_is_active(spa, SPA_FEATURE_LOG_SPACEMAP));
