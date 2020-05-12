@@ -732,6 +732,11 @@ void
 space_map_write(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
     uint64_t vdev_id, dmu_tx_t *tx)
 {
+	spa_t *spa = tx->tx_pool->dp_spa;
+
+	if (spa_exiting_any(spa))
+		return;
+
 	ASSERT(dsl_pool_sync_context(dmu_objset_pool(sm->sm_os)));
 	VERIFY3U(space_map_object(sm), !=, 0);
 

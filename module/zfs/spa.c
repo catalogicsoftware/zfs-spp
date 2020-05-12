@@ -6050,7 +6050,7 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (!spa_refcount_zero(spa) || (spa->spa_inject_ref != 0)) {
 		VERIFY(!force_removal);
 		error = SET_ERROR(EBUSY);
-		cmn_err(CE_WARN, ""spa_export_common(%s) = %d, refcount not zero",
+		cmn_err(CE_WARN, "spa_export_common(%s) = %d, refcount not zero",
 		    spa_name(spa), error);
 		goto fail;
 	}
