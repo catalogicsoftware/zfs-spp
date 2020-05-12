@@ -1495,7 +1495,7 @@ spa_should_flush_logs_on_unload(spa_t *spa)
 	if (!spa_feature_is_active(spa, SPA_FEATURE_LOG_SPACEMAP))
 		return (B_FALSE);
 
-	if (spa_exiting(spa))
+	if (spa_exiting_any(spa))
 		return (B_FALSE);
 
 	if (!spa_writeable(spa))
