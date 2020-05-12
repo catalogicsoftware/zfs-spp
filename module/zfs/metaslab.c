@@ -3757,6 +3757,8 @@ metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 		    "returning false", spa_name(spa));
 		return (B_FALSE);
 	}
+	zfs_dbgmsg("metaslab_flush(): spa_exiting_any(%s) = false",
+	    spa_name(spa));
 
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
 	ASSERT3U(spa_sync_pass(spa), ==, 1);
