@@ -5912,13 +5912,13 @@ static void
 spa_set_killer(spa_t *spa, void *killer)
 {
 
-	zfs_dbgmsg("spa_set_killer(%s):enter = %p", spa_name(spa), killer);
+	cmn_err(CE_WARN, "spa_set_killer(%s):enter = %p", spa_name(spa), killer);
 	mutex_enter(&spa->spa_evicting_os_lock);
 	spa->spa_killer = killer;
 	if (killer != NULL)
 		txg_completion_notify(spa_get_dsl(spa));
 	mutex_exit(&spa->spa_evicting_os_lock);
-	zfs_dbgmsg("spa_set_killer(%s):exit = %p", spa_name(spa), killer);
+	cmn_err(CE_WARN, "spa_set_killer(%s):exit = %p", spa_name(spa), killer);
 }
 
 /*
@@ -5974,7 +5974,7 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	force_removal = hardforce && modifying;
 	if (force_removal) {
 		/* Ensure that references see this change after this. */
-		zfs_dbgmsg("spa_export_common(%s) starting forced export", spa_name(spa));
+		cmn_err(CE_WARN, "spa_export_common(%s) starting forced export", spa_name(spa));
 		spa_set_killer(spa, curthread);
 	}
 	mutex_exit(&spa_namespace_lock);
@@ -5988,7 +5988,7 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (force_removal && spa->spa_sync_on) {
 		error = dsl_dataset_sendrecv_cancel_all(spa);
 		if (error != 0) {
-			zfs_dbgmsg("spa_export_common(%s) cancelling forced "
+			cmn_err(CE_WARN, "spa_export_common(%s) cancelling forced "
 			    "export due to send/recv error", spa_name(spa));
 			spa_set_killer(spa, NULL);
 			spa_async_resume(spa);
@@ -6108,7 +6108,7 @@ export_spa:
 		 * suspension and abort.
 		 */
 		txg_how = (!hardforce) ? TXG_WAIT_F_NOSUSPEND : 0;
-		zfs_dbgmsg("spa_export_common(%s) spa_unload(, %d)",
+		cmn_err(CE_WARN, "spa_export_common(%s) spa_unload(, %d)",
 		    spa_name(spa), txg_how);
 		error = spa_unload(spa, txg_how);
 		if (error != 0)
@@ -6130,7 +6130,7 @@ export_spa:
 
 fail:
 	if (force_removal) {
-		zfs_dbgmsg("spa_export_common(%s) cancelling forced export "
+		cmn_err(CE_WARN, "spa_export_common(%s) cancelling forced export "
 		    "due to error=%d", spa_name(spa), error);
 		spa_set_killer(spa, NULL);
 	}

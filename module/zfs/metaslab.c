@@ -3753,11 +3753,11 @@ metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 	spa_t *spa = msp->ms_group->mg_vd->vdev_spa;
 
 	if (spa_exiting_any(spa)) {
-		zfs_dbgmsg("metaslab_flush(): spa_exiting_any(%s), "
-		    "returning false", spa_name(spa));
+		cmn_err(CE_WARN, "metaslab_flush(): spa_exiting_any(%s) = true"
+		    ", aborting metaslab_flush()", spa_name(spa));
 		return (B_FALSE);
 	}
-	zfs_dbgmsg("metaslab_flush(): spa_exiting_any(%s) = false",
+	cmn_err(CE_WARN, "metaslab_flush(): spa_exiting_any(%s) = false",
 	    spa_name(spa));
 
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
