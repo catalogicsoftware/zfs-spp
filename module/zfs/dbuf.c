@@ -2060,7 +2060,13 @@ dbuf_dirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 				 * syncing state (since they are only modified
 				 * then).
 				 */
-				arc_release(db->db_buf, db);
+				if (db == NULL) {
+					cmn_err(CE_WARN, "NULL dbuf! db=%p", db);
+				} else if(db->db_buf == NULL) {
+					cmn_err(CE_WARN, "NULL dbuf buf! db=%p db_buf=%p", db, db->db_buf);
+				} else {
+					arc_release(db->db_buf, db);
+				}
 				dbuf_fix_old_data(db, tx->tx_txg);
 				data_old = db->db_buf;
 			}
