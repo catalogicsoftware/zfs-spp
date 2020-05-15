@@ -527,6 +527,7 @@ space_map_write_seg(space_map_t *sm, uint64_t rstart, uint64_t rend,
     maptype_t maptype, uint64_t vdev_id, uint8_t words, dmu_buf_t **dbp,
     void *tag, dmu_tx_t *tx)
 {
+	spa_t *spa = tx->tx_pool->dp_spa;
 	int error;
 
 	ASSERT3U(words, !=, 0);
@@ -574,7 +575,7 @@ space_map_write_seg(space_map_t *sm, uint64_t rstart, uint64_t rend,
 			error = dmu_buf_hold(sm->sm_os,
 			    space_map_object(sm), next_word_offset,
 			    tag, &db, DMU_READ_PREFETCH);
-			VERIFY(error == 0 || spa_exiting_any(sm->sm_os->os_spa));
+			VERIFY(error == 0 || spa_exiting_any(spa));
 			if (error != 0)
 				return;
 
@@ -677,7 +678,7 @@ space_map_write_impl(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
 	uint64_t next_word_offset = sm->sm_phys->smp_length;
 	error = dmu_buf_hold(sm->sm_os, space_map_object(sm),
 	    next_word_offset, FTAG, &db, DMU_READ_PREFETCH);
-	VERIFY(error == 0 || spa_exiting_any(sm->sm_os->os_spa));
+	VERIFY(error == 0 || spa_exiting_any(spa));
 	if (error != 0)
 		return;
 
