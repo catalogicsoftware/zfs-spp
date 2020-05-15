@@ -1092,11 +1092,25 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
     const void *buf, dmu_tx_t *tx)
 {
 	int i;
+	spa_t *spa = tx->tx_pool->dp_spa;
+
+	if (spa_exiting_any(spa) != 0) {
+		cmn_err(CE_WARN, "dmu_write_impl() aborting due to spa_exiting_any()");
+		return;
+	}
 
 	for (i = 0; i < numbufs; i++) {
 		uint64_t tocpy;
 		int64_t bufoff;
 		dmu_buf_t *db = dbp[i];
+
+		if (db == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p", db);
+			return;
+		} else if (db->db_data == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf_data! db=%p db->db_data=%p", db, db->db_data);
+			return;
+		}
 
 		ASSERT(size > 0);
 

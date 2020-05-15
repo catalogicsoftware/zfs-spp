@@ -2385,6 +2385,11 @@ dmu_buf_will_fill(dmu_buf_t *db_fake, dmu_tx_t *tx)
 {
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
 
+	if (db == NULL) {
+		cmn_err(CE_WARN, "dmu_buf_will_fill() NULL dbuf! db=%p", db);
+		return;
+	}
+
 	ASSERT(db->db_blkid != DMU_BONUS_BLKID);
 	ASSERT(tx->tx_txg != 0);
 	ASSERT(db->db_level == 0);
