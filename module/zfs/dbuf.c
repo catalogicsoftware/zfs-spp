@@ -2307,7 +2307,7 @@ dmu_buf_will_dirty_impl(dmu_buf_t *db_fake, int flags, dmu_tx_t *tx)
 
 	if (db == NULL) {
 		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf! db=%p. continue", db);
-	} else if (db->db.db_buf == NULL) {
+	} else if (db->db_buf == NULL) {
 		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL db_buf! db=%p. continue", db);
 	}
 
@@ -2388,7 +2388,7 @@ dmu_buf_will_fill(dmu_buf_t *db_fake, dmu_tx_t *tx)
 
 	if (db == NULL) {
 		cmn_err(CE_WARN, "dmu_buf_will_fill() NULL dbuf! db=%p", db);
-	} else if (db->db.db_buf == NULL) {
+	} else if (db->db_buf == NULL) {
 		cmn_err(CE_WARN, "dmu_buf_will_fill() NULL db_buf! db=%p", db);
 	}
 
