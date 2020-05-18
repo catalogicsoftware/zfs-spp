@@ -1119,10 +1119,10 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
 		if (db == NULL) {
 			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p. Continuing anyway", db);
 		} else if (db->db_data == NULL) {
-			cmn_err(CE_WARN, "dmu_write_impl() NULL db_data! db=%p db->db_data=%p. Continuing anyway", db, db->db_data);
+			cmn_err(CE_WARN, "dmu_write_impl() NULL db_data! db=%p db->db_data=%p db->db_size=%lu. Skipping memcpy", db, db->db_data, db->db_size);
+		} else {
+			(void) memcpy((char *)db->db_data + bufoff, buf, tocpy);
 		}
-
-		(void) memcpy((char *)db->db_data + bufoff, buf, tocpy);
 
 		if (tocpy == db->db_size)
 			dmu_buf_fill_done(db, tx);
