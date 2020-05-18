@@ -1104,12 +1104,6 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
 		int64_t bufoff;
 		dmu_buf_t *db = dbp[i];
 
-		if (db == NULL) {
-			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p. Continuing anyway", db);
-		} else if (db->db_data == NULL) {
-			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf_data! db=%p db->db_data=%p. Continuing anyway", db, db->db_data);
-		}
-
 		ASSERT(size > 0);
 
 		bufoff = offset - db->db_offset;
@@ -1121,6 +1115,14 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
 			dmu_buf_will_fill(db, tx);
 		else
 			dmu_buf_will_dirty(db, tx);
+
+		if (db == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p. Continuing anyway", db);
+		} else if (db->db_data == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL db_data! db=%p db->db_data=%p. Continuing anyway", db, db->db_data);
+		} else if (db->db_buf == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL db_buf! db=%p db->db_buf=%p. Continuing anyway", db, db->db_buf);
+		}
 
 		(void) memcpy((char *)db->db_data + bufoff, buf, tocpy);
 
