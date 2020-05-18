@@ -576,8 +576,10 @@ space_map_write_seg(space_map_t *sm, uint64_t rstart, uint64_t rend,
 			    space_map_object(sm), next_word_offset,
 			    tag, &db, DMU_READ_PREFETCH);
 			VERIFY(error == 0 || spa_exiting_any(spa));
-			if (error != 0)
+			if (error != 0) {
+				cmn_err(CE_WARN, "space_map_write_seg() error=%d", error);
 				return;
+			}
 
 			dmu_buf_will_dirty(db, tx);
 
@@ -679,8 +681,10 @@ space_map_write_impl(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
 	error = dmu_buf_hold(sm->sm_os, space_map_object(sm),
 	    next_word_offset, FTAG, &db, DMU_READ_PREFETCH);
 	VERIFY(error == 0 || spa_exiting_any(spa));
-	if (error != 0)
+	if (error != 0) {
+		cmn_err(CE_WARN, "space_map_write_impl() error=%d", error);
 		return;
+	}
 
 	ASSERT3U(db->db_size, ==, sm->sm_blksz);
 

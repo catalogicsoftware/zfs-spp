@@ -1105,11 +1105,9 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
 		dmu_buf_t *db = dbp[i];
 
 		if (db == NULL) {
-			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p", db);
-			return;
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p. Continuing anyway", db);
 		} else if (db->db_data == NULL) {
-			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf_data! db=%p db->db_data=%p", db, db->db_data);
-			return;
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf_data! db=%p db->db_data=%p. Continuing anyway", db, db->db_data);
 		}
 
 		ASSERT(size > 0);

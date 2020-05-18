@@ -2306,9 +2306,9 @@ dmu_buf_will_dirty_impl(dmu_buf_t *db_fake, int flags, dmu_tx_t *tx)
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
 
 	if (db == NULL) {
-		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf! db=%p", db);
+		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf! db=%p. continue", db);
 	} else if (db->db.db_data == NULL) {
-		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf_data! db=%p", db);
+		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf_data! db=%p. continue", db);
 	}
 
 	ASSERT(tx->tx_txg != 0);
