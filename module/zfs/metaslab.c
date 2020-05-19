@@ -3695,6 +3695,12 @@ metaslab_flush_update(metaslab_t *msp, dmu_tx_t *tx)
 	metaslab_group_t *mg = msp->ms_group;
 	spa_t *spa = mg->mg_vd->vdev_spa;
 
+	if (spa_exiting_any(spa)) {
+		cmn_err(CE_WARN, "metaslab_flush_update(): spa_exiting_any(%s) = true"
+		    ", aborting metaslab_flush_update()", spa_name(spa));
+		return;
+	}
+
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
 
 	ASSERT3U(spa_sync_pass(spa), ==, 1);
