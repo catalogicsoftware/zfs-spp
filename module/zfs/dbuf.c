@@ -2305,12 +2305,6 @@ dmu_buf_will_dirty_impl(dmu_buf_t *db_fake, int flags, dmu_tx_t *tx)
 {
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
 
-	if (db == NULL) {
-		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL dbuf! db=%p. continue", db);
-	} else if (db->db_buf == NULL) {
-		cmn_err(CE_WARN, "dmu_buf_will_dirty_impl() NULL db_buf! db=%p. continue", db);
-	}
-
 	ASSERT(tx->tx_txg != 0);
 	ASSERT(!zfs_refcount_is_zero(&db->db_holds));
 
