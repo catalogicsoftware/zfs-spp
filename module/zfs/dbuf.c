@@ -2066,7 +2066,7 @@ dbuf_dirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 					cmn_err(CE_WARN, "dbuf_dirty(): NULL dbuf buf! db=%p db_buf=%p", db, db->db_buf);
 					if (spa_exiting_any(os->os_spa)) {
 						cmn_err(CE_WARN, "dbuf_dirty(): forced export + NULL, aborting");
-						return;
+						return (NULL);
 					}
 				} else {
 					arc_release(db->db_buf, db);
