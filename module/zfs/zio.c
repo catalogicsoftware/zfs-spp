@@ -3284,7 +3284,7 @@ zio_ddt_write(zio_t *zio)
 	/* If the refcnt is 0, then we just added it. */
 	if (ddt_phys_total_refcnt(dde) == 0) {
 		if (spa->spa_dedup_table_size != ~0ULL)
-			spa->spa_dedup_table_size += ddt_entry_size();
+			spa->spa_ddt_pending++;
 	}
 
 	if (zp->zp_dedup_verify && zio_ddt_collision(zio, ddt, dde)) {

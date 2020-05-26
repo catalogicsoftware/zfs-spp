@@ -103,6 +103,15 @@ zpool_prop_init(void)
 	zprop_register_number(ZPOOL_PROP_DEDUP_TABLE_SIZE, "dedup_table_size",
 	    0, PROP_READONLY, ZFS_TYPE_POOL, "<size>", "DDTSIZE");
 
+	zprop_register_number(ZPOOL_PROP_DDT_ENTRIES,
+	    "dedup_table_entries", 0, PROP_READONLY, ZFS_TYPE_POOL, "<count>",
+	    "DDTENTRIES");
+#ifdef ZFS_DEBUG
+	zprop_register_number(ZPOOL_PROP_DDT_PENDING,
+	    "dedup_table_pending", 0, PROP_READONLY, ZFS_TYPE_POOL,
+	    "<pending>", "DDTPENDING");
+#endif
+
 	/* default number properties */
 	zprop_register_number(ZPOOL_PROP_VERSION, "version", SPA_VERSION,
 	    PROP_DEFAULT, ZFS_TYPE_POOL, "<version>", "VERSION");

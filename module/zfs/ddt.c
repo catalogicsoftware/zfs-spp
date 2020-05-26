@@ -515,6 +515,7 @@ ddt_get_dedup_object_stats(spa_t *spa, ddt_object_t *ddo_total)
 	}
 
 	spa->spa_dedup_table_size = ddo_total->ddo_dspace;
+	spa->spa_dedup_table_count = ddo_total->ddo_count;
 
 }
 
@@ -999,9 +1000,11 @@ ddt_load(spa_t *spa)
 		 */
 		bcopy(ddt->ddt_histogram, &ddt->ddt_histogram_cache,
 		    sizeof (ddt->ddt_histogram));
-		spa->spa_dedup_dspace = ~0ULL;
-		spa->spa_dedup_table_size = ~0ULL;
 	}
+	spa->spa_dedup_dspace = ~0ULL;
+	spa->spa_dedup_table_size = ~0ULL;
+	spa->spa_dedup_table_count = ~0ULL;
+	spa->spa_ddt_pending = 0;
 
 	return (0);
 }
@@ -1377,6 +1380,8 @@ ddt_sync_table(ddt_t *ddt, dmu_tx_t *tx, uint64_t txg)
 	    sizeof (ddt->ddt_histogram));
 	spa->spa_dedup_dspace = ~0ULL;
 	spa->spa_dedup_table_size = ~0ULL;
+	spa->spa_dedup_table_count = ~0ULL;
+	spa->spa_ddt_pending = 0;
 }
 
 void
@@ -1463,10 +1468,28 @@ ddt_walk(spa_t *spa, ddt_bookmark_t *ddb, ddt_entry_t *dde)
 	return (SET_ERROR(ENOENT));
 }
 
-int
-ddt_entry_size(void)
+static size_t
+ddt_entry_size(spa_t *spa)
 {
-	return (sizeof (struct ddt_phys));
+	/*
+	 * This may be over-complicated:  some experimentation
+	 * gave me a size of *just* under 500 bytes for an on-disk
+	 * DDT (ZAP) entry, for a non-trivial DDT, so I round up to 512
+	 * for a default value.  But checking the spa for the
+	 * average size (with some bounds checks) may not be all
+	 * that beneficial over just the plain size.
+	 */
+
+	uint64_t avg;
+	if (spa->spa_dedup_table_count == 0 ||
+	    spa->spa_dedup_table_size == 0 ||
+	    spa->spa_dedup_table_count == ~0ULL ||
+	    spa->spa_dedup_table_size == ~0ULL)
+		return (512);
+	avg = spa->spa_dedup_table_size / spa->spa_dedup_table_count;
+	if (avg == 0)
+		return (512);
+	return MIN(512, avg);
 }
 
 /*
@@ -1475,8 +1498,13 @@ ddt_entry_size(void)
 boolean_t
 ddt_check_overquota(spa_t *spa)
 {
-	if (spa->spa_dedup_table_quota &&
-	    ddt_get_ddt_dsize(spa) >= spa->spa_dedup_table_quota)
+	uint64_t estimated_size;
+
+	if (spa->spa_dedup_table_quota == 0)
+		return (B_FALSE);
+	estimated_size = (spa->spa_ddt_pending + spa->spa_dedup_table_count);
+	estimated_size *= ddt_entry_size(spa);
+	if (estimated_size > spa->spa_dedup_table_quota)
 		return (B_TRUE);
 	return (B_FALSE);
 }

@@ -357,6 +357,12 @@ spa_prop_get_config(spa_t *spa, nvlist_t **nvp)
 		spa_prop_add_list(*nvp, ZPOOL_PROP_DEDUP_TABLE_SIZE, NULL,
 		    ddt_get_ddt_dsize(spa), src);
 
+		spa_prop_add_list(*nvp, ZPOOL_PROP_DDT_ENTRIES, NULL,
+		    spa->spa_dedup_table_count, src);
+#ifdef ZFS_DEBUG
+		spa_prop_add_list(*nvp, ZPOOL_PROP_DDT_PENDING, NULL,
+		    spa->spa_ddt_pending, src);
+#endif
 		spa_prop_add_list(*nvp, ZPOOL_PROP_HEALTH, NULL,
 		    rvd->vdev_state, src);
 

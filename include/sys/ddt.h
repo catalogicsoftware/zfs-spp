@@ -256,7 +256,6 @@ extern const ddt_ops_t ddt_zap_ops;
 extern const ddt_ops_t ddt_log_ops;
 
 extern void ddt_stat_update(ddt_t *ddt, ddt_entry_t *dde, uint64_t neg);
-extern int ddt_entry_size(void);
 
 #ifdef	__cplusplus
 }
