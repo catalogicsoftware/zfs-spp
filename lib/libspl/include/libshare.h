@@ -22,7 +22,6 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright (c) 2019 by Delphix. All rights reserved.
  */
 #ifndef _LIBSPL_LIBSHARE_H
 #define	_LIBSPL_LIBSHARE_H
@@ -83,7 +82,6 @@ extern char *sa_errorstr(int);
 extern sa_share_t sa_find_share(sa_handle_t, char *);
 extern int sa_enable_share(sa_group_t, char *);
 extern int sa_disable_share(sa_share_t, char *);
-extern int sa_generate_share(const char *, const char *);
 
 extern int sharetab_lock(void);
 extern int sharetab_unlock(void);
