@@ -175,10 +175,6 @@ update_sharetab(sa_handle_impl_t impl_handle)
 	sa_fstype_t *fstype;
 	const char *resource;
 
-	if (mkdir("/etc/dfs", 0755) < 0 && errno != EEXIST) {
-		return;
-	}
-
 	temp_fd = mkstemp(tempfile);
 
 	if (temp_fd < 0)
