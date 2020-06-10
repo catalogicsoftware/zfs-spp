@@ -1549,7 +1549,7 @@ zpool_do_create(int argc, char **argv)
 			if (pool != NULL) {
 				if (zfs_mount(pool, NULL, 0) == 0) {
 					ret = zfs_shareall(pool);
-					zfs_shares_commit();
+					zfs_commit_all_shares();
 				}
 				zfs_close(pool);
 			}

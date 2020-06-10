@@ -46,32 +46,6 @@ static void free_share(sa_share_impl_t share);
 
 static int fstypes_count;
 static sa_fstype_t *fstypes;
-static int libshare_lock_fd = -1;
-
-int
-libshare_lock(void)
-{
-	libshare_lock_fd = open(LIBSHARE_LOCK_FILE,
-	    O_RDWR | O_CREAT, 0600);
-	if (libshare_lock_fd == -1) {
-		fprintf(stderr, "failed to lock %s: %s\n",
-		    LIBSHARE_LOCK_FILE, strerror(errno));
-		return (errno);
-	}
-	return (flock(libshare_lock_fd, LOCK_EX));
-}
-
-int
-libshare_unlock(void)
-{
-	if (libshare_lock_fd < 0)
-		return (-1);
-
-	int rc = flock(libshare_lock_fd, LOCK_UN);
-	close(libshare_lock_fd);
-	libshare_lock_fd = -1;
-	return (rc);
-}
 
 sa_fstype_t *
 register_fstype(const char *name, const sa_share_ops_t *ops)
@@ -115,7 +89,6 @@ sa_enable_share(const char *zfsname, const char *mountpoint,
 	if (impl_share == NULL)
 		return (SA_NO_MEMORY);
 
-	(void) libshare_lock();
 	fstype = fstypes;
 	while (fstype != NULL) {
 		if (strcmp(fstype->name, protocol) == 0) {
@@ -131,7 +104,6 @@ sa_enable_share(const char *zfsname, const char *mountpoint,
 
 		fstype = fstype->next;
 	}
-	(void) libshare_unlock();
 	free_share(impl_share);
 
 	return (found_protocol ? ret : SA_INVALID_PROTOCOL);
@@ -148,7 +120,6 @@ sa_disable_share(const char *mountpoint, char *protocol)
 	if (impl_share == NULL)
 		return (SA_NO_MEMORY);
 
-	(void) libshare_lock();
 	fstype = fstypes;
 	while (fstype != NULL) {
 		if (strcmp(fstype->name, protocol) == 0) {
@@ -161,7 +132,6 @@ sa_disable_share(const char *mountpoint, char *protocol)
 
 		fstype = fstype->next;
 	}
-	(void) libshare_unlock();
 	free_share(impl_share);
 
 	return (found_protocol ? ret : SA_INVALID_PROTOCOL);
@@ -190,11 +160,12 @@ sa_is_shared(const char *mountpoint, char *protocol)
 }
 
 void
-sa_share_commit(void)
+sa_commit_shares(const char *protocol)
 {
 	sa_fstype_t *fstype = fstypes;
 	while (fstype != NULL) {
-		fstype->ops->commit_shares();
+		if (strcmp(fstype->name, protocol) == 0)
+			fstype->ops->commit_shares();
 		fstype = fstype->next;
 	}
 }

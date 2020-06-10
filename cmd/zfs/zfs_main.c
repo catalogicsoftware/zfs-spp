@@ -749,7 +749,7 @@ zfs_mount_and_share(libzfs_handle_t *hdl, const char *dataset, zfs_type_t type)
 			    "successfully created, but not shared\n"));
 			ret = 1;
 		}
-		zfs_shares_commit();
+		zfs_commit_all_shares();
 	}
 
 	zfs_close(zhp);
@@ -6655,7 +6655,7 @@ share_mount(int op, int argc, char **argv)
 		zfs_foreach_mountpoint(g_zfs, cb.cb_handles, cb.cb_used,
 		    share_mount_one_cb, &share_mount_state,
 		    op == OP_MOUNT && !(flags & MS_CRYPT));
-		zfs_shares_commit();
+		zfs_commit_all_shares();
 
 		ret = share_mount_state.sm_status;
 
@@ -6709,7 +6709,7 @@ share_mount(int op, int argc, char **argv)
 		} else {
 			ret = share_mount_one(zhp, op, flags, NULL, B_TRUE,
 			    options);
-			zfs_shares_commit();
+			zfs_commit_all_shares();
 			zfs_close(zhp);
 		}
 	}
@@ -6856,7 +6856,7 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 			    "not currently shared\n"), path);
 		} else {
 			ret = zfs_unshareall_bypath(zhp, path);
-			zfs_shares_commit();
+			zfs_commit_all_shares();
 		}
 	} else {
 		char mtpt_prop[ZFS_MAXPROPLEN];
@@ -7074,7 +7074,7 @@ unshare_unmount(int op, int argc, char **argv)
 		}
 
 		if (op == OP_SHARE)
-			zfs_shares_commit();
+			zfs_commit_all_shares();
 
 		uu_avl_walk_end(walk);
 		uu_avl_destroy(tree);

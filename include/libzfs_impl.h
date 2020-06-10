@@ -198,6 +198,8 @@ extern int zfs_parse_options(char *, zfs_share_proto_t);
 extern int zfs_unshare_proto(zfs_handle_t *,
     const char *, zfs_share_proto_t *);
 
+extern void zfs_commit_proto(zfs_share_proto_t *);
+
 #ifdef	__cplusplus
 }
 #endif

@@ -626,12 +626,12 @@ zfs_unmount(zfs_handle_t *zhp, const char *mountpoint, int flags)
 			free(mntpt);
 			return (-1);
 		}
-		zfs_shares_commit();
+		zfs_commit_all_shares();
 
 		if (unmount_one(hdl, mntpt, flags) != 0) {
 			free(mntpt);
 			(void) zfs_shareall(zhp);
-			zfs_shares_commit();
+			zfs_commit_all_shares();
 			return (-1);
 		}
 		libzfs_mnttab_remove(hdl, zhp->zfs_name);
@@ -834,9 +834,41 @@ zfs_parse_options(char *options, zfs_share_proto_t proto)
 }
 
 void
-zfs_shares_commit(void)
+zfs_commit_proto(zfs_share_proto_t *proto)
 {
-	sa_share_commit();
+	zfs_share_proto_t *curr_proto;
+	for (curr_proto = proto; *curr_proto != PROTO_END; curr_proto++) {
+		sa_commit_shares(proto_table[*curr_proto].p_name);
+	}
+}
+
+void
+zfs_commit_nfs_shares(void)
+{
+	zfs_commit_proto(nfs_only);
+}
+
+void
+zfs_commit_smb_shares(void)
+{
+	zfs_commit_proto(smb_only);
+}
+
+void
+zfs_commit_all_shares(void)
+{
+	zfs_commit_proto(share_all_proto);
+}
+
+void
+zfs_commit_shares(const char *proto)
+{
+	if (proto == NULL)
+		zfs_commit_proto(share_all_proto);
+	else if (strcmp(proto, "nfs") == 0)
+		zfs_commit_proto(nfs_only);
+	else if (strcmp(proto, "smb") == 0)
+		zfs_commit_proto(smb_only);
 }
 
 int
@@ -1428,7 +1460,7 @@ zpool_enable_datasets(zpool_handle_t *zhp, const char *mntopts, int flags)
 	if (ms.ms_mntstatus != 0)
 		ret = ms.ms_mntstatus;
 	else
-		zfs_shares_commit();
+		zfs_commit_all_shares();
 
 out:
 	for (int i = 0; i < cb.cb_used; i++)
@@ -1561,7 +1593,7 @@ zpool_disable_datasets(zpool_handle_t *zhp, boolean_t force)
 				goto out;
 		}
 	}
-	zfs_shares_commit();
+	zfs_commit_all_shares();
 
 	/*
 	 * Now unmount everything, removing the underlying directories as
