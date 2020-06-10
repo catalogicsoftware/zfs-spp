@@ -38,11 +38,6 @@ typedef struct sa_share_impl {
 
 #define	FSINFO(impl_share, fstype) (&(impl_share->fsinfo[fstype->fsinfo_index]))
 
-#define	LIBSHARE_LOCK_FILE	"/etc/zfs/libshare.lck"
-
-int libshare_lock(void);
-int libshare_unlock(void);
-
 typedef struct sa_share_ops {
 	int (*enable_share)(sa_share_impl_t share);
 	int (*disable_share)(sa_share_impl_t share);

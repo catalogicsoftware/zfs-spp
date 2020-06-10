@@ -200,6 +200,8 @@ extern int zfs_unshare_proto(zfs_handle_t *,
 int nfs_exports_lock(void);
 int nfs_exports_unlock(void);
 
+extern void zfs_commit_proto(zfs_share_proto_t *);
+
 #ifdef	__cplusplus
 }
 #endif

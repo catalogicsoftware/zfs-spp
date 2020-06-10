@@ -3621,7 +3621,7 @@ create_parents(libzfs_handle_t *hdl, char *target, int prefixlen)
 
 		zfs_close(h);
 	}
-	zfs_shares_commit();
+	zfs_commit_all_shares();
 
 	return (0);
 

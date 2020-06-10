@@ -43,7 +43,7 @@
 
 #define	ZFS_EXPORTS_DIR			"/etc/exports.d"
 #define	ZFS_EXPORTS_FILE		ZFS_EXPORTS_DIR"/zfs.exports"
-#define	ZFS_EXPORTS_FILE_TEMP	ZFS_EXPORTS_DIR"zfs.exports.XXXXXXXX"
+#define	ZFS_EXPORTS_LOCK		ZFS_EXPORTS_FILE".lock"
 
 static sa_fstype_t *nfs_fstype;
 
@@ -52,6 +52,38 @@ typedef int (*nfs_shareopt_callback_t)(const char *opt, const char *value,
 
 typedef int (*nfs_host_callback_t)(const char *sharepath, const char *filename,
     const char *host, const char *security, const char *access, void *cookie);
+
+static int nfs_lock_fd = -1;
+
+/*
+ * The nfs_exports_[lock|unlock] is used to guard against conconcurrent
+ * updates to the exports file. Each protocol is responsible for
+ * providing the necessary locking to ensure consistency.
+ */
+int
+nfs_exports_lock(void)
+{
+	nfs_lock_fd = open(ZFS_EXPORTS_LOCK,
+	    O_RDWR | O_CREAT, 0600);
+	if (nfs_lock_fd == -1) {
+		fprintf(stderr, "failed to lock %s: %s\n",
+		    ZFS_EXPORTS_LOCK, strerror(errno));
+		return (errno);
+	}
+	return (flock(nfs_lock_fd, LOCK_EX));
+}
+
+int
+nfs_exports_unlock(void)
+{
+	if (nfs_lock_fd < 0)
+		return (-1);
+
+	int error = flock(nfs_lock_fd, LOCK_UN);
+	close(nfs_lock_fd);
+	nfs_lock_fd = -1;
+	return (error);
+}
 
 /*
  * Invokes the specified callback function for each Solaris share option
@@ -384,37 +416,28 @@ nfs_add_entry(const char *filename, const char *sharepath,
 	if (linux_opts == NULL)
 		linux_opts = "";
 
-	const char *fmt = "%s %s(sec=%s,%s,%s)\n";
-	int bytes = snprintf(NULL, 0, fmt, sharepath,
-	    linuxhost, security, access_opts, linux_opts);
-	char *buffer = malloc(bytes + 1);
-	if (buffer == NULL) {
-		free(linuxhost);
-		return (SA_NO_MEMORY);
-	}
-
-	sprintf(buffer, fmt, sharepath, linuxhost,
-	    security, access_opts, linux_opts);
-
-	free(linuxhost);
-
-	int fd = open(filename, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if (fd == -1) {
+	FILE *fp = fopen(filename, "a+");
+	if (fp == NULL) {
 		fprintf(stderr, "failed to open %s file: %s", filename,
 		    strerror(errno));
-		free(buffer);
+		free(linuxhost);
 		return (SA_SYSTEM_ERR);
 	}
 
-	if (write(fd, buffer, strlen(buffer)) == -1) {
-		perror("failed to write exports file");
-		close(fd);
-		free(buffer);
+	if (fprintf(fp, "%s %s(sec=%s,%s,%s)\n", sharepath, linuxhost,
+	    security, access_opts, linux_opts) < 0) {
+		fprintf(stderr, "failed to write to %s\n", filename);
+		free(linuxhost);
+		fclose(fp);
 		return (SA_SYSTEM_ERR);
 	}
-	fsync(fd);
-	close(fd);
-	free(buffer);
+
+	free(linuxhost);
+	if (fclose(fp) != 0) {
+		fprintf(stderr, "Unable to close file %s: %s\n",
+		    filename, strerror(errno));
+		return (SA_SYSTEM_ERR);
+	}
 	return (SA_OK);
 }
 
@@ -511,7 +534,7 @@ get_linux_shareopts_cb(const char *key, const char *value, void *cookie)
 static int
 get_linux_shareopts(const char *shareopts, char **plinux_opts)
 {
-	int rc;
+	int error;
 
 	assert(plinux_opts != NULL);
 
@@ -523,15 +546,15 @@ get_linux_shareopts(const char *shareopts, char **plinux_opts)
 	/* mountpoint - Restrict exports to ZFS mountpoints */
 	(void) add_linux_shareopt(plinux_opts, "mountpoint", NULL);
 
-	rc = foreach_nfs_shareopt(shareopts, get_linux_shareopts_cb,
+	error = foreach_nfs_shareopt(shareopts, get_linux_shareopts_cb,
 	    plinux_opts);
 
-	if (rc != SA_OK) {
+	if (error != SA_OK) {
 		free(*plinux_opts);
 		*plinux_opts = NULL;
 	}
 
-	return (rc);
+	return (error);
 }
 
 static int
@@ -596,6 +619,7 @@ nfs_copy_entries(char *filename, const char *mountpoint)
 {
 	char *buf = NULL;
 	size_t buflen = MAXPATHLEN;
+	int error = SA_OK;
 
 	/*
          * If the file doesn't exist then there is nothing more
@@ -605,43 +629,49 @@ nfs_copy_entries(char *filename, const char *mountpoint)
 	if (oldfp == NULL)
 		return (SA_OK);
 
-	buf = (char *)malloc(buflen * sizeof (char));
-	if (buf == NULL) {
-		fclose(oldfp);
-		return (SA_NO_MEMORY);
-	}
-
 	FILE *newfp = fopen(filename, "w+");
 	while ((getline(&buf, &buflen, oldfp)) != -1) {
 		char *space = NULL;
 
 		if ((space = strchr(buf, ' ')) != NULL) {
-			if (strncmp(mountpoint, buf, space - buf) == 0 &&
-			    strncmp(mountpoint, buf, strlen(mountpoint)) == 0) {
+			int mountpoint_len = strlen(mountpoint);
+
+			if (space - buf == mountpoint_len &&
+			    strncmp(mountpoint, buf, mountpoint_len) == 0) {
 				continue;
 			}
 		}
-		fprintf(newfp, "%s", buf);
-	}		
-	free(buf);
+		fputs(buf, newfp);
+	}
 
-	fflush(newfp);
-	fclose(newfp);
+	if (oldfp != NULL && ferror(oldfp) != 0) {
+		error = ferror(oldfp);
+	}
+	if (error == 0 && ferror(newfp) != 0) {
+		error = ferror(newfp);
+	}
+
+	free(buf);
+	if (fclose(newfp) != 0) {
+		fprintf(stderr, "Unable to close file %s: %s\n",
+		    filename, strerror(errno));
+		error = error != 0 ? error : SA_SYSTEM_ERR;
+	}
 	fclose(oldfp);
 
-	return (SA_OK);
+	return (error);
 }
 
 static int
-nfs_export_all(void)
+nfs_commit_shares(void)
 {
-	char *argv[3];
-	argv[0] = "/usr/sbin/exportfs";
-	argv[1] = "-r";
-	argv[2] = NULL;
+	char *argv[] = {
+	    "/usr/sbin/exportfs",
+	    "-ra",
+	    NULL
+	};
 
-	int rc = libzfs_run_process(argv[0], argv, 0);
-	return (rc);
+	return (libzfs_run_process(argv[0], argv, 0));
 }
 
 /*
@@ -651,29 +681,35 @@ static int
 nfs_enable_share(sa_share_impl_t impl_share)
 {
 	char *shareopts, *linux_opts;
-	int rc;
+	int error;
 	char *filename = NULL;
-
-	shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
-	if (shareopts == NULL)
-		return (SA_OK);
 
 	if ((filename = nfs_init_tmpfile()) == NULL)
 		return (SA_SYSTEM_ERR);
+
+	VERIFY0(nfs_exports_lock());
 	verify(nfs_copy_entries(filename, impl_share->sa_mountpoint) == SA_OK);
 
-	rc = get_linux_shareopts(shareopts, &linux_opts);
-	if (rc != SA_OK) {
+	shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
+	error = get_linux_shareopts(shareopts, &linux_opts);
+	if (error != SA_OK) {
 		unlink(filename);
-		return (rc);
+		free(filename);
+		VERIFY0(nfs_exports_unlock());
+		return (error);
 	}
 
-	rc = foreach_nfs_host(impl_share, filename, nfs_add_entry, linux_opts);
+	error = foreach_nfs_host(impl_share, filename, nfs_add_entry,
+	    linux_opts);
 	free(linux_opts);
-	if (rc == 0) {
-		rc = nfs_fini_tmpfile(filename);
+	if (error == 0) {
+		error = nfs_fini_tmpfile(filename);
+	} else {
+		unlink(filename);
+		free(filename);
 	}
-	return (rc);
+	VERIFY0(nfs_exports_unlock());
+	return (error);
 }
 
 /*
@@ -686,8 +722,12 @@ nfs_disable_share(sa_share_impl_t impl_share)
 
 	if ((filename = nfs_init_tmpfile()) == NULL)
 		return (SA_SYSTEM_ERR);
+
+	VERIFY0(nfs_exports_lock());
 	verify(nfs_copy_entries(filename, impl_share->sa_mountpoint) == SA_OK);
-	return (nfs_fini_tmpfile(filename));
+	int error = nfs_fini_tmpfile(filename);
+	VERIFY0(nfs_exports_unlock());
+	return (error);
 }
 
 /*
@@ -697,48 +737,44 @@ static int
 nfs_validate_shareopts(const char *shareopts)
 {
 	char *linux_opts;
-	int rc;
+	int error;
 
-	rc = get_linux_shareopts(shareopts, &linux_opts);
+	error = get_linux_shareopts(shareopts, &linux_opts);
 
-	if (rc != SA_OK)
-		return (rc);
+	if (error != SA_OK)
+		return (error);
+
 	free(linux_opts);
-
 	return (SA_OK);
 }
 
 static boolean_t
-nfs_is_share_active(sa_share_impl_t impl_share)
+nfs_is_shared(sa_share_impl_t impl_share)
 {
-	size_t buflen = MAXPATHLEN;
-	char *buf = (char *)malloc(buflen * sizeof (char));
-
-	if (buf == NULL)
-		return (B_FALSE);
+	size_t buflen = 0;
+	char *buf = NULL;
 
 	FILE *fp = fopen(ZFS_EXPORTS_FILE, "r");
 	if (fp == NULL) {
-		free(buf);
 		return (B_FALSE);
 	}
-
 	while ((getline(&buf, &buflen, fp)) != -1) {
 		char *space = NULL;
 
 		if ((space = strchr(buf, ' ')) != NULL) {
-			if (strncmp(impl_share->sa_mountpoint, buf,
-			    space - buf) == 0 &&
+			int mountpoint_len = strlen(impl_share->sa_mountpoint);
+
+			if (space - buf == mountpoint_len &&
 			    strncmp(impl_share->sa_mountpoint, buf,
-			    strlen(impl_share->sa_mountpoint)) == 0) {
+			    mountpoint_len) == 0) {
 				fclose(fp);
+				free(buf);
 				return (B_TRUE);
 			}
 		}
 	}
 	free(buf);
 	fclose(fp);
-
 	return (B_FALSE);
 }
 
@@ -763,13 +799,13 @@ nfs_clear_shareopts(sa_share_impl_t impl_share)
 static const sa_share_ops_t nfs_shareops = {
 	.enable_share = nfs_enable_share,
 	.disable_share = nfs_disable_share,
-	.is_shared = nfs_is_share_active,
+	.is_shared = nfs_is_shared,
 
 	.validate_shareopts = nfs_validate_shareopts,
 	.update_shareopts = nfs_update_shareopts,
 	.generate_share = nfs_generate_share,
 	.clear_shareopts = nfs_clear_shareopts,
-	.commit_shares = nfs_export_all,
+	.commit_shares = nfs_commit_shares,
 };
 
 /*

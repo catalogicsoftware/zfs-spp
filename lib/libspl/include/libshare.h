@@ -78,7 +78,7 @@ extern int sa_enable_share(const char *, const char *, const char *,
     char *);
 extern int sa_disable_share(const char *, char *);
 extern boolean_t sa_is_shared(const char *, char *);
-extern void sa_share_commit(void);
+extern void sa_commit_shares(const char *);
 
 /* protocol specific interfaces */
 extern int sa_validate_shareopts(char *, char *);

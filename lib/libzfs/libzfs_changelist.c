@@ -98,7 +98,7 @@ changelist_prefix(prop_changelist_t *clp)
 	prop_changenode_t *cn;
 	uu_avl_walk_t *walk;
 	int ret = 0;
-	boolean_t update_shares = B_FALSE;
+	boolean_t commit_smb_shares = B_FALSE;
 
 	if (clp->cl_prop != ZFS_PROP_MOUNTPOINT &&
 	    clp->cl_prop != ZFS_PROP_SHARESMB)
@@ -136,7 +136,7 @@ changelist_prefix(prop_changelist_t *clp)
 				break;
 			case ZFS_PROP_SHARESMB:
 				(void) zfs_unshare_smb(cn->cn_handle, NULL);
-				update_shares = B_TRUE;
+				commit_smb_shares = B_TRUE;
 				break;
 
 			default:
@@ -145,8 +145,8 @@ changelist_prefix(prop_changelist_t *clp)
 		}
 	}
 
-	if (update_shares)
-		zfs_shares_commit();
+	if (commit_smb_shares)
+		zfs_commit_smb_shares();
 	uu_avl_walk_end(walk);
 
 	if (ret == -1)
@@ -171,7 +171,8 @@ changelist_postfix(prop_changelist_t *clp)
 	uu_avl_walk_t *walk;
 	char shareopts[ZFS_MAXPROPLEN];
 	int errors = 0;
-	boolean_t update_shares = B_FALSE;
+	boolean_t commit_smb_shares = B_FALSE;
+	boolean_t commit_nfs_shares = B_FALSE;
 
 	/*
 	 * If we're changing the mountpoint, attempt to destroy the underlying
@@ -254,22 +255,24 @@ changelist_postfix(prop_changelist_t *clp)
 		 */
 		if (sharenfs && mounted) {
 			errors += zfs_share_nfs(cn->cn_handle);
-			update_shares = B_TRUE;
+			commit_nfs_shares = B_TRUE;
 		} else if (cn->cn_shared || clp->cl_waslegacy) {
 			errors += zfs_unshare_nfs(cn->cn_handle, NULL);
-			update_shares = B_TRUE;
+			commit_nfs_shares = B_TRUE;
 		}
 		if (sharesmb && mounted) {
 			errors += zfs_share_smb(cn->cn_handle);
-			update_shares = B_TRUE;
+			commit_smb_shares = B_TRUE;
 		} else if (cn->cn_shared || clp->cl_waslegacy) {
 			errors += zfs_unshare_smb(cn->cn_handle, NULL);
-			update_shares = B_TRUE;
+			commit_smb_shares = B_TRUE;
 		}
 	}
 
-	if (update_shares)
-		zfs_shares_commit();
+	if (commit_nfs_shares)
+		zfs_commit_nfs_shares();
+	if (commit_smb_shares)
+		zfs_commit_smb_shares();
 	uu_avl_walk_end(walk);
 
 	return (errors ? -1 : 0);
@@ -357,7 +360,7 @@ changelist_unshare(prop_changelist_t *clp, zfs_share_proto_t *proto)
 			ret = -1;
 	}
 
-	zfs_shares_commit();
+	zfs_commit_proto(proto);
 	uu_avl_walk_end(walk);
 
 	return (ret);
