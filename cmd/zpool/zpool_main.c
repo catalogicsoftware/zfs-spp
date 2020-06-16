@@ -73,6 +73,8 @@
 
 #include "statcommon.h"
 
+libzfs_handle_t *g_zfs;
+
 static int zpool_do_create(int, char **);
 static int zpool_do_destroy(int, char **);
 
@@ -1545,8 +1547,10 @@ zpool_do_create(int argc, char **argv)
 			zfs_handle_t *pool = zfs_open(g_zfs,
 			    tname ? tname : poolname, ZFS_TYPE_FILESYSTEM);
 			if (pool != NULL) {
-				if (zfs_mount(pool, NULL, 0) == 0)
+				if (zfs_mount(pool, NULL, 0) == 0) {
 					ret = zfs_shareall(pool);
+					zfs_commit_all_shares();
+				}
 				zfs_close(pool);
 			}
 		} else if (libzfs_errno(g_zfs) == EZFS_INVALIDNAME) {

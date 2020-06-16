@@ -1437,49 +1437,14 @@ badlabel:
 				else
 					proto = PROTO_NFS;
 
-				/*
-				 * Must be an valid sharing protocol
-				 * option string so init the libshare
-				 * in order to enable the parser and
-				 * then parse the options. We use the
-				 * control API since we don't care about
-				 * the current configuration and don't
-				 * want the overhead of loading it
-				 * until we actually do something.
-				 */
-
-				if (zfs_init_libshare(hdl,
-				    SA_INIT_CONTROL_API) != SA_OK) {
-					/*
-					 * An error occurred so we can't do
-					 * anything
-					 */
-					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-					    "'%s' cannot be set: problem "
-					    "in share initialization"),
-					    propname);
-					(void) zfs_error(hdl, EZFS_BADPROP,
-					    errbuf);
-					goto error;
-				}
-
 				if (zfs_parse_options(strval, proto) != SA_OK) {
-					/*
-					 * There was an error in parsing so
-					 * deal with it by issuing an error
-					 * message and leaving after
-					 * uninitializing the libshare
-					 * interface.
-					 */
 					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 					    "'%s' cannot be set to invalid "
 					    "options"), propname);
 					(void) zfs_error(hdl, EZFS_BADPROP,
 					    errbuf);
-					zfs_uninit_libshare(hdl);
 					goto error;
 				}
-				zfs_uninit_libshare(hdl);
 			}
 
 			break;
@@ -3656,6 +3621,7 @@ create_parents(libzfs_handle_t *hdl, char *target, int prefixlen)
 
 		zfs_close(h);
 	}
+	zfs_commit_all_shares();
 
 	return (0);
 

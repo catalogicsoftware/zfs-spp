@@ -22,24 +22,15 @@
 /*
  * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011 Gunnar Beutner
- * Copyright (c) 2019 by Delphix. All rights reserved.
  */
 
-struct sa_handle_impl;
-
 typedef struct sa_share_fsinfo {
-	boolean_t active;
-	char *resource;
 	char *shareopts;
 } sa_share_fsinfo_t;
 
 typedef struct sa_share_impl {
-	struct sa_share_impl *next;
-
-	struct sa_handle_impl *handle;
-
-	char *sharepath;
-	char *dataset;
+	char *sa_mountpoint;
+	char *sa_zfsname;
 
 	sa_share_fsinfo_t *fsinfo; /* per-fstype information */
 } *sa_share_impl_t;
@@ -49,12 +40,12 @@ typedef struct sa_share_impl {
 typedef struct sa_share_ops {
 	int (*enable_share)(sa_share_impl_t share);
 	int (*disable_share)(sa_share_impl_t share);
+	boolean_t (*is_shared)(sa_share_impl_t share);
 	int (*validate_shareopts)(const char *shareopts);
 	int (*update_shareopts)(sa_share_impl_t impl_share,
-	    const char *resource, const char *shareopts,
-		boolean_t skip_reshare);
-	int (*generate_share)(sa_share_impl_t share);
+	    const char *shareopts);
 	void (*clear_shareopts)(sa_share_impl_t impl_share);
+	int (*commit_shares)(void);
 } sa_share_ops_t;
 
 typedef struct sa_fstype {
@@ -64,10 +55,5 @@ typedef struct sa_fstype {
 	const sa_share_ops_t *ops;
 	int fsinfo_index;
 } sa_fstype_t;
-
-typedef struct sa_handle_impl {
-	libzfs_handle_t *zfs_libhandle;
-	sa_share_impl_t shares;
-} *sa_handle_impl_t;
 
 sa_fstype_t *register_fstype(const char *name, const sa_share_ops_t *ops);
