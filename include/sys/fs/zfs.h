@@ -1145,7 +1145,6 @@ typedef struct ddt_histogram {
 #define	ZFS_DRIVER	"zfs"
 #define	ZFS_DEV		"/dev/zfs"
 #define	ZFS_SHARETAB	"/etc/dfs/sharetab"
-#define	ZFS_SHARETAB_LOCK	"/etc/dfs/sharetab.lck"
 
 #define	ZFS_SUPER_MAGIC	0x2fc12fc1
 
