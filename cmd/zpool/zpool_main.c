@@ -66,7 +66,6 @@
 
 #include <libzfs.h>
 #include <libzutil.h>
-#include <libshare.h>
 
 #include "zpool_util.h"
 #include "zfs_comutil.h"
@@ -1539,8 +1538,10 @@ zpool_do_create(int argc, char **argv)
 			zfs_handle_t *pool = zfs_open(g_zfs,
 			    tname ? tname : poolname, ZFS_TYPE_FILESYSTEM);
 			if (pool != NULL) {
-				if (zfs_mount(pool, NULL, 0) == 0)
+				if (zfs_mount(pool, NULL, 0) == 0) {
 					ret = zfs_shareall(pool);
+					zfs_commit_all_shares();
+				}
 				zfs_close(pool);
 			}
 		} else if (libzfs_errno(g_zfs) == EZFS_INVALIDNAME) {
@@ -1616,15 +1617,12 @@ zpool_do_destroy(int argc, char **argv)
 		return (1);
 	}
 
-	verify(sharetab_lock() == 0);
 	if (zpool_disable_datasets(zhp, force) != 0) {
 		(void) fprintf(stderr, gettext("could not destroy '%s': "
 		    "could not unmount datasets\n"), zpool_get_name(zhp));
 		zpool_close(zhp);
-		verify(sharetab_unlock() == 0);
 		return (1);
 	}
-	verify(sharetab_unlock() == 0);
 
 	/* The history must be logged as part of the export */
 	log_history = B_FALSE;
@@ -1649,12 +1647,8 @@ zpool_export_one(zpool_handle_t *zhp, void *data)
 {
 	export_cbdata_t *cb = data;
 
-	verify(sharetab_lock() == 0);
-	if (zpool_disable_datasets(zhp, cb->force || cb->hardforce) != 0) {
-		verify(sharetab_unlock() == 0);
+	if (zpool_disable_datasets(zhp, cb->force || cb->hardforce) != 0)
 		return (1);
-	}
-	verify(sharetab_unlock() == 0);
 
 	/* The history must be logged as part of the export */
 	log_history = B_FALSE;
@@ -2836,15 +2830,12 @@ do_import(nvlist_t *config, const char *newname, const char *mntopts,
 			ret = 1;
 	}
 
-	verify(sharetab_lock() == 0);
 	if (zpool_get_state(zhp) != POOL_STATE_UNAVAIL &&
 	    !(flags & ZFS_IMPORT_ONLY) &&
 	    zpool_enable_datasets(zhp, mntopts, 0) != 0) {
 		zpool_close(zhp);
-		verify(sharetab_unlock() == 0);
 		return (1);
 	}
-	verify(sharetab_unlock() == 0);
 
 	zpool_close(zhp);
 	return (ret);

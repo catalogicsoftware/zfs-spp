@@ -598,20 +598,6 @@ parseprop(nvlist_t *props, char *propname)
 		    "specified multiple times\n"), propname);
 		return (B_FALSE);
 	}
-
-	/*
-	 * If we are setting the sharenfs property, lock the sharetab to
-	 * ensure concurrent writers don't update the file simultaneously.
-	 * The sharetab will remain locked until the process exits.
-	 */
-	if (strcmp(propname, zfs_prop_to_name(ZFS_PROP_SHARENFS)) == 0) {
-		if (sharetab_lock() != 0) {
-			(void) fprintf(stderr, gettext("unable to set "
-			    "property: %s\n"), strerror(errno));
-			exit(1);
-		}
-	}
-
 	if (nvlist_add_string(props, propname, propval) != 0)
 		nomem();
 	return (B_TRUE);
@@ -757,6 +743,7 @@ zfs_mount_and_share(libzfs_handle_t *hdl, const char *dataset, zfs_type_t type)
 			    "successfully created, but not shared\n"));
 			ret = 1;
 		}
+		zfs_commit_all_shares();
 	}
 
 	zfs_close(zhp);
@@ -6358,20 +6345,9 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 		    "'canmount' property is set to 'off'\n"), cmdname,
 		    zfs_get_name(zhp));
 		return (1);
-	} else if (canmount == ZFS_CANMOUNT_NOAUTO) {
-		/*
-		 * Skip this request when noauto is set and we wanted all
-		 * mounts|shares (i.e. -a) or we're not generating exports
-		 */
-		if (!explicit && !generate)
-			return (0);
-	}
-
-	/*
-	 * When generating shares and the filesystem isn't mounted then skip it
-	 */
-	if (generate && !zfs_is_mounted(zhp, NULL))
+	} else if (canmount == ZFS_CANMOUNT_NOAUTO && !explicit) {
 		return (0);
+	}
 
 	/*
 	 * If this filesystem is encrypted and does not have
@@ -6703,9 +6679,7 @@ share_mount(int op, int argc, char **argv)
 		zfs_foreach_mountpoint(g_zfs, cb.cb_handles, cb.cb_used,
 		    share_mount_one_cb, &share_mount_state,
 		    op == OP_MOUNT && !(flags & MS_CRYPT));
-
-		if (do_generate)
-			verify(nfs_exports_unlock() == 0);
+		zfs_commit_all_shares();
 
 		ret = share_mount_state.sm_status;
 
@@ -6758,7 +6732,8 @@ share_mount(int op, int argc, char **argv)
 			ret = 1;
 		} else {
 			ret = share_mount_one(zhp, op, flags, NULL, B_TRUE,
-			    B_FALSE, options);
+			    options);
+			zfs_commit_all_shares();
 			zfs_close(zhp);
 		}
 	}
@@ -6906,6 +6881,7 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 			    "not currently shared\n"), path);
 		} else {
 			ret = zfs_unshareall_bypath(zhp, path);
+			zfs_commit_all_shares();
 		}
 	} else {
 		char mtpt_prop[ZFS_MAXPROPLEN];
@@ -7121,6 +7097,9 @@ unshare_unmount(int op, int argc, char **argv)
 			free(node->un_mountp);
 			free(node);
 		}
+
+		if (op == OP_SHARE)
+			zfs_commit_all_shares();
 
 		uu_avl_walk_end(walk);
 		uu_avl_destroy(tree);
