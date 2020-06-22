@@ -598,20 +598,6 @@ parseprop(nvlist_t *props, char *propname)
 		    "specified multiple times\n"), propname);
 		return (B_FALSE);
 	}
-
-	/*
-	 * If we are setting the sharenfs property, lock the sharetab to
-	 * ensure concurrent writers don't update the file simultaneously.
-	 * The sharetab will remain locked until the process exits.
-	 */
-	if (strcmp(propname, zfs_prop_to_name(ZFS_PROP_SHARENFS)) == 0) {
-		if (sharetab_lock() != 0) {
-			(void) fprintf(stderr, gettext("unable to set "
-			    "property: %s\n"), strerror(errno));
-			exit(1);
-		}
-	}
-
 	if (nvlist_add_string(props, propname, propval) != 0)
 		nomem();
 	return (B_TRUE);
