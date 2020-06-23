@@ -308,8 +308,7 @@ get_usage(zfs_help_t idx)
 		return (gettext("\tset <property=value> ... "
 		    "<filesystem|volume|snapshot> ...\n"));
 	case HELP_SHARE:
-		return (gettext("\tshare [-l] <-a [nfs|smb] | filesystem>\n"
-		    "\tshare <-g [nfs]\n"));
+		return (gettext("\tshare [-l] <-a [nfs|smb] | filesystem>\n"));
 	case HELP_SNAPSHOT:
 		return (gettext("\tsnapshot [-r] [-o property=value] ... "
 		    "<filesystem|volume>@<snap> ...\n"));
@@ -6223,7 +6222,6 @@ typedef enum { OP_SHARE, OP_MOUNT } share_mount_op_t;
 typedef struct share_mount_state {
 	share_mount_op_t	sm_op;
 	boolean_t	sm_verbose;
-	boolean_t	sm_generate;
 	int	sm_flags;
 	char	*sm_options;
 	char	*sm_proto; /* only valid for OP_SHARE */
@@ -6238,7 +6236,7 @@ typedef struct share_mount_state {
  */
 static int
 share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
-    boolean_t explicit, boolean_t generate, const char *options)
+    boolean_t explicit, const char *options)
 {
 	char mountpoint[ZFS_MAXPROPLEN];
 	char shareopts[ZFS_MAXPROPLEN];
@@ -6393,15 +6391,6 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 	switch (op) {
 	case OP_SHARE:
 
-		/*
-		 * Generate a linux-specific exports file. This will create
-		 * an NFS only file that can be used by the linux NFS utils
-		 * to automatically share out ZFS filesystems.
-		 */
-		if (generate) {
-			return (zfs_share_generate(zhp));
-		}
-
 		shared_nfs = zfs_is_shared_nfs(zhp, NULL);
 		shared_smb = zfs_is_shared_smb(zhp, NULL);
 
@@ -6526,7 +6515,7 @@ share_mount_one_cb(zfs_handle_t *zhp, void *arg)
 	int ret;
 
 	ret = share_mount_one(zhp, sms->sm_op, sms->sm_flags, sms->sm_proto,
-	    B_FALSE, sms->sm_generate, sms->sm_options);
+	    B_FALSE, sms->sm_options);
 
 	pthread_mutex_lock(&sms->sm_lock);
 	if (ret != 0)
@@ -6560,19 +6549,18 @@ append_options(char *mntopts, char *newopts)
 static int
 share_mount(int op, int argc, char **argv)
 {
-	boolean_t do_all = B_FALSE;
+	int do_all = 0;
 	boolean_t verbose = B_FALSE;
-	boolean_t do_generate = B_FALSE;
 	int c, ret = 0;
 	char *options = NULL;
 	int flags = 0;
 
 	/* check options */
-	while ((c = getopt(argc, argv, op == OP_MOUNT ? ":alvo:O" : "agl"))
+	while ((c = getopt(argc, argv, op == OP_MOUNT ? ":alvo:O" : "al"))
 	    != -1) {
 		switch (c) {
 		case 'a':
-			do_all = B_TRUE;
+			do_all = 1;
 			break;
 		case 'v':
 			verbose = B_TRUE;
@@ -6595,14 +6583,6 @@ share_mount(int op, int argc, char **argv)
 			break;
 		case 'O':
 			flags |= MS_OVERLAY;
-			break;
-		case 'g':
-			/*
-			 * Generating the share information can only be
-			 * performed on all shares.
-			 */
-			do_all = B_TRUE;
-			do_generate = B_TRUE;
 			break;
 		case ':':
 			(void) fprintf(stderr, gettext("missing argument for "
@@ -6630,13 +6610,6 @@ share_mount(int op, int argc, char **argv)
 				    "must be 'nfs' or 'smb'\n"));
 				usage(B_FALSE);
 			}
-			if (do_generate && strcmp(argv[0], "smb") == 0) {
-				(void) fprintf(stderr, gettext("export file "
-				    "generation is not compatible fow smb "
-				    "shares\n"));
-				usage(B_FALSE);
-			}
-
 			protocol = argv[0];
 			argc--;
 			argv++;
@@ -6660,15 +6633,11 @@ share_mount(int op, int argc, char **argv)
 		share_mount_state_t share_mount_state = { 0 };
 		share_mount_state.sm_op = op;
 		share_mount_state.sm_verbose = verbose;
-		share_mount_state.sm_generate = do_generate;
 		share_mount_state.sm_flags = flags;
 		share_mount_state.sm_options = options;
 		share_mount_state.sm_proto = protocol;
 		share_mount_state.sm_total = cb.cb_used;
 		pthread_mutex_init(&share_mount_state.sm_lock, NULL);
-
-		if (do_generate)
-			verify(nfs_exports_lock() == 0);
 
 		/*
 		 * libshare isn't mt-safe, so only do the operation in parallel
@@ -6746,7 +6715,6 @@ share_mount(int op, int argc, char **argv)
 
 /*
  * zfs mount -a [nfs]
- * zfs mount -g [nfs]
  * zfs mount filesystem
  *
  * Mount all filesystems, or mount the given filesystem.

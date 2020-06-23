@@ -23,7 +23,6 @@
  * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011,2012 Turbo Fredriksson <turbo@bayour.com>, based on nfs.c
  *                         by Gunnar Beutner
- * Copyright (c) 2019 by Delphix. All rights reserved.
  *
  * This is an addition to the zfs device driver to add, modify and remove SMB
  * shares using the 'net share' command that comes with Samba.
@@ -422,7 +421,6 @@ static const sa_share_ops_t smb_shareops = {
 
 	.validate_shareopts = smb_validate_shareopts,
 	.update_shareopts = smb_update_shareopts,
-    .generate_share = smb_generate_share,
 	.clear_shareopts = smb_clear_shareopts,
 	.commit_shares = smb_update_shares,
 };

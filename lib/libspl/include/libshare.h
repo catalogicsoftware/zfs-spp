@@ -22,7 +22,6 @@
 /*
  * Copyright 2008 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
- * Copyright (c) 2019 by Delphix. All rights reserved.
  */
 #ifndef _LIBSPL_LIBSHARE_H
 #define	_LIBSPL_LIBSHARE_H

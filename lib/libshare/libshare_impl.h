@@ -22,7 +22,6 @@
 /*
  * Copyright (c) 2002, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011 Gunnar Beutner
- * Copyright (c) 2019 by Delphix. All rights reserved.
  */
 
 typedef struct sa_share_fsinfo {
