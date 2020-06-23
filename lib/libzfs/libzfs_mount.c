@@ -895,7 +895,7 @@ zfs_share_generate(zfs_handle_t *zhp)
 	char mountpoint[ZFS_MAXPROPLEN];
 	char shareopts[ZFS_MAXPROPLEN];
 
-	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL))
+	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL, 0))
 		return (0);
 
 	verify(zfs_prop_get(zhp, ZFS_PROP_SHARENFS, shareopts,
