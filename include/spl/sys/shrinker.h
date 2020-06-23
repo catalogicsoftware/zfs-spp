@@ -128,7 +128,7 @@ fn(struct shrinker *shrink, int nr_to_scan, unsigned int gfp_mask)	\
 /*
  * Linux 3.0 to 3.11 Shrinker API Compatibility.
  */
-#if defined(HAVE_SINGLE_SHRINKER_CALLBACK)
+#elif defined(HAVE_SINGLE_SHRINKER_CALLBACK)
 #define	SPL_SHRINKER_DECLARE(varname, countfunc, scanfunc, seek_cost)	\
 static int								\
 __ ## varname ## _wrapper(struct shrinker *shrink, struct shrink_control *sc)\
@@ -141,7 +141,7 @@ __ ## varname ## _wrapper(struct shrinker *shrink, struct shrink_control *sc)\
 									\
 static struct shrinker varname = {					\
 	.shrink = __ ## varname ## _wrapper,				\
-	.seeks = seek_cost						\
+	.seeks = seek_cost,						\
 }
 
 #define	SHRINK_STOP	(-1)
@@ -154,7 +154,7 @@ static struct shrinker varname = {					\
 static struct shrinker varname = {					\
 	.count_objects = countfunc,					\
 	.scan_objects = scanfunc,					\
-	.seeks = seek_cost							\
+	.seeks = seek_cost,						\
 }
 
 #else
