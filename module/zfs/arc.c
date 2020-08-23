@@ -7886,7 +7886,8 @@ arc_init(void)
 #endif
 
 	/* Set max to 1/2 of all memory */
-	arc_c_max = allmem / 2;
+	arc_c_min = MAX(allmem / 32, 2ULL << SPA_MAXBLOCKSHIFT);
+	arc_c_max = MAX(allmem / 2, arc_c_min);
 
 #ifdef	_KERNEL
 	/* Set min cache to 1/32 of all memory, or 32MB, whichever is more */
