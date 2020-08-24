@@ -1147,7 +1147,7 @@ static void arc_access(arc_buf_hdr_t *, kmutex_t *);
 boolean_t arc_is_overflowing(void);
 static void arc_buf_watch(arc_buf_t *);
 static void arc_tuning_update(void);
-static void arc_prune_async(int64_t);
+static void arc_prune(int64_t);
 static void arc_wait_for_eviction(uint64_t);
 static uint64_t arc_free_memory(void);
 
@@ -4264,12 +4264,14 @@ arc_evict_state(arc_state_t *state, uint64_t spa, int64_t bytes,
 
 		/*
 		 * Try to reduce pinned dnodes with a floor of arc_dnode_limit.
-		 * Request that 10% of the LRUs be scanned by the superblock
-		 * shrinker.
+		 * Request that zfs_arc_dnode_reduce_percent of the LRUs be
+		 * scanned by the superblock shrinker.
 		 */
-		if (type == ARC_BUFC_DATA && aggsum_compare(&astat_dnode_size,
+		if (aggsum_compare(&astat_dnode_size,
 		    arc_dnode_limit) > 0) {
-			arc_prune_async((aggsum_upper_bound(&astat_dnode_size) -
+			ASSERT(type == ARC_BUFC_DATA ||
+			    type == ARC_BUFC_METADATA);
+			arc_prune((aggsum_upper_bound(&astat_dnode_size) -
 			    arc_dnode_limit) / sizeof (dnode_t) /
 			    zfs_arc_dnode_reduce_percent);
 		}
@@ -4371,7 +4373,7 @@ arc_flush_state(arc_state_t *state, uint64_t spa, arc_buf_contents_t type,
 }
 
 /*
- * Helper function for arc_prune_async() it is responsible for safely
+ * Helper function for arc_prune() it is responsible for safely
  * handling the execution of a registered arc_prune_func_t.
  */
 static void
@@ -4392,13 +4394,12 @@ arc_prune_task(void *ptr)
  * honor the arc_meta_limit and reclaim otherwise pinned ARC buffers.  This
  * is analogous to dnlc_reduce_cache() but more generic.
  *
- * This operation is performed asynchronously so it may be safely called
- * in the context of the arc_reclaim_thread().  A reference is taken here
- * for each registered arc_prune_t and the arc_prune_task() is responsible
- * for releasing it once the registered arc_prune_func_t has completed.
+ * A reference is taken here for each registered arc_prune_t and the
+ * arc_prune_task() is responsible for releasing it once the registered
+ * arc_prune_func_t has completed. 
  */
 static void
-arc_prune_async(int64_t adjust)
+arc_prune(int64_t adjust)
 {
 	arc_prune_t *ap;
 
@@ -4419,6 +4420,7 @@ arc_prune_async(int64_t adjust)
 		ARCSTAT_BUMP(arcstat_prune);
 	}
 	mutex_exit(&arc_prune_mtx);
+	taskq_wait(arc_prune_taskq);
 }
 
 /*
@@ -4537,7 +4539,7 @@ restart:
 
 			if (zfs_arc_meta_prune) {
 				prune += zfs_arc_meta_prune;
-				arc_prune_async(prune);
+				arc_prune(prune);
 			}
 		}
 
@@ -4976,7 +4978,7 @@ arc_kmem_reap_soon(void)
 		 * We are exceeding our meta-data cache limit.
 		 * Prune some entries to release holds on meta-data.
 		 */
-		arc_prune_async(zfs_arc_meta_prune);
+		arc_prune(zfs_arc_meta_prune);
 	}
 #if defined(_ILP32)
 	/*
@@ -7921,8 +7923,7 @@ arc_init(void)
 	    offsetof(arc_prune_t, p_node));
 	mutex_init(&arc_prune_mtx, NULL, MUTEX_DEFAULT, NULL);
 
-	arc_prune_taskq = taskq_create("arc_prune", max_ncpus, defclsyspri,
-	    max_ncpus, INT_MAX, TASKQ_PREPOPULATE | TASKQ_DYNAMIC);
+	arc_prune_taskq = taskq_create("arc_prune", 1, defclsyspri, 0, 0, 0);
 
 	arc_ksp = kstat_create("zfs", 0, "arcstats", "misc", KSTAT_TYPE_NAMED,
 	    sizeof (arc_stats) / sizeof (kstat_named_t), KSTAT_FLAG_VIRTUAL);
