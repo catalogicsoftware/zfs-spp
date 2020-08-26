@@ -24,7 +24,6 @@
 
 #include <sys/kmem.h>
 #include <sys/kmem_cache.h>
-#include <sys/shrinker.h>
 #include <sys/taskq.h>
 #include <sys/timer.h>
 #include <sys/vmem.h>
@@ -188,10 +187,6 @@ struct rw_semaphore spl_kmem_cache_sem; /* Cache list lock */
 taskq_t *spl_kmem_cache_taskq;		/* Task queue for aging / reclaim */
 
 static void spl_cache_shrink(spl_kmem_cache_t *skc, void *obj);
-
-SPL_SHRINKER_CALLBACK_FWD_DECLARE(spl_kmem_cache_generic_shrinker);
-SPL_SHRINKER_DECLARE(spl_kmem_cache_shrinker,
-	spl_kmem_cache_generic_shrinker, KMC_DEFAULT_SEEKS);
 
 static void *
 kv_alloc(spl_kmem_cache_t *skc, int size, int flags)
@@ -871,7 +866,7 @@ spl_magazine_destroy(spl_kmem_cache_t *skc)
  */
 spl_kmem_cache_t *
 spl_kmem_cache_create(char *name, size_t size, size_t align,
-    spl_kmem_ctor_t ctor, spl_kmem_dtor_t dtor, spl_kmem_reclaim_t reclaim,
+    spl_kmem_ctor_t ctor, spl_kmem_dtor_t dtor, void *reclaim,
     void *priv, void *vmp, int flags)
 {
 	gfp_t lflags = kmem_flags_convert(KM_SLEEP);
@@ -885,6 +880,7 @@ spl_kmem_cache_create(char *name, size_t size, size_t align,
 	ASSERT0(flags & KMC_NOHASH);
 	ASSERT0(flags & KMC_QCACHE);
 	ASSERT(vmp == NULL);
+	ASSERT(reclaim == NULL);
 
 	might_sleep();
 
@@ -903,7 +899,6 @@ spl_kmem_cache_create(char *name, size_t size, size_t align,
 
 	skc->skc_ctor = ctor;
 	skc->skc_dtor = dtor;
-	skc->skc_reclaim = reclaim;
 	skc->skc_private = priv;
 	skc->skc_vmp = vmp;
 	skc->skc_linux_cache = NULL;
@@ -1017,11 +1012,6 @@ spl_kmem_cache_create(char *name, size_t size, size_t align,
 			goto out;
 		}
 
-#if defined(HAVE_KMEM_CACHE_ALLOCFLAGS)
-		skc->skc_linux_cache->allocflags |= __GFP_COMP;
-#elif defined(HAVE_KMEM_CACHE_GFPFLAGS)
-		skc->skc_linux_cache->gfpflags |= __GFP_COMP;
-#endif
 		skc->skc_flags |= KMC_NOMAGAZINE;
 	}
 
@@ -1595,84 +1585,11 @@ spl_kmem_cache_free(spl_kmem_cache_t *skc, void *obj)
 EXPORT_SYMBOL(spl_kmem_cache_free);
 
 /*
- * The generic shrinker function for all caches.  Under Linux a shrinker
- * may not be tightly coupled with a slab cache.  In fact Linux always
- * systematically tries calling all registered shrinker callbacks which
- * report that they contain unused objects.  Because of this we only
- * register one shrinker function in the shim layer for all slab caches.
- * We always attempt to shrink all caches when this generic shrinker
- * is called.
- *
- * If sc->nr_to_scan is zero, the caller is requesting a query of the
- * number of objects which can potentially be freed.  If it is nonzero,
- * the request is to free that many objects.
- *
- * Linux kernels >= 3.12 have the count_objects and scan_objects callbacks
- * in struct shrinker and also require the shrinker to return the number
- * of objects freed.
- *
- * Older kernels require the shrinker to return the number of freeable
- * objects following the freeing of nr_to_free.
- *
- * Linux semantics differ from those under Solaris, which are to
- * free all available objects which may (and probably will) be more
- * objects than the requested nr_to_scan.
- */
-static spl_shrinker_t
-__spl_kmem_cache_generic_shrinker(struct shrinker *shrink,
-    struct shrink_control *sc)
-{
-	spl_kmem_cache_t *skc = NULL;
-	int alloc = 0;
-
-	/*
-	 * No shrinking in a transaction context.  Can cause deadlocks.
-	 */
-	if (sc->nr_to_scan && spl_fstrans_check())
-		return (SHRINK_STOP);
-
-	down_read(&spl_kmem_cache_sem);
-	list_for_each_entry(skc, &spl_kmem_cache_list, skc_list) {
-		if (sc->nr_to_scan) {
-#ifdef HAVE_SPLIT_SHRINKER_CALLBACK
-			uint64_t oldalloc = skc->skc_obj_alloc;
-			spl_kmem_cache_reap_now(skc,
-			    MAX(sc->nr_to_scan>>fls64(skc->skc_slab_objs), 1));
-			if (oldalloc > skc->skc_obj_alloc)
-				alloc += oldalloc - skc->skc_obj_alloc;
-#else
-			spl_kmem_cache_reap_now(skc,
-			    MAX(sc->nr_to_scan>>fls64(skc->skc_slab_objs), 1));
-			alloc += skc->skc_obj_alloc;
-#endif /* HAVE_SPLIT_SHRINKER_CALLBACK */
-		} else {
-			/* Request to query number of freeable objects */
-			alloc += skc->skc_obj_alloc;
-		}
-	}
-	up_read(&spl_kmem_cache_sem);
-
-	/*
-	 * When KMC_RECLAIM_ONCE is set allow only a single reclaim pass.
-	 * This functionality only exists to work around a rare issue where
-	 * shrink_slabs() is repeatedly invoked by many cores causing the
-	 * system to thrash.
-	 */
-	if ((spl_kmem_cache_reclaim & KMC_RECLAIM_ONCE) && sc->nr_to_scan)
-		return (SHRINK_STOP);
-
-	return (MAX(alloc, 0));
-}
-
-SPL_SHRINKER_CALLBACK_WRAPPER(spl_kmem_cache_generic_shrinker);
-
-/*
- * Call the registered reclaim function for a cache.  Depending on how
- * many and which objects are released it may simply repopulate the
- * local magazine which will then need to age-out.  Objects which cannot
- * fit in the magazine we will be released back to their slabs which will
- * also need to age out before being release.  This is all just best
- * effort and we do not want to thrash creating and destroying slabs.
+ * Depending on how many and which objects are released it may simply
+ * repopulate the local magazine which will then need to age-out.  Objects
+ * which cannot fit in the magazine will be released back to their slabs
+ * which will also need to age out before being released.  This is all just
+ * best effort and we do not want to thrash creating and destroying slabs.
  */
 void
 spl_kmem_cache_reap_now(spl_kmem_cache_t *skc, int count)
@@ -1680,55 +1597,16 @@ spl_kmem_cache_reap_now(spl_kmem_cache_t *skc, int count)
 	ASSERT(skc->skc_magic == SKC_MAGIC);
 	ASSERT(!test_bit(KMC_BIT_DESTROY, &skc->skc_flags));
 
-	atomic_inc(&skc->skc_ref);
+	if (skc->skc_flags & KMC_SLAB)
+		return;
 
-	/*
-	 * Execute the registered reclaim callback if it exists.
-	 */
-	if (skc->skc_flags & KMC_SLAB) {
-		if (skc->skc_reclaim)
-			skc->skc_reclaim(skc->skc_private);
-		goto out;
-	}
+	atomic_inc(&skc->skc_ref);
 
 	/*
 	 * Prevent concurrent cache reaping when contended.
 	 */
 	if (test_and_set_bit(KMC_BIT_REAPING, &skc->skc_flags))
 		goto out;
-
-	/*
-	 * When a reclaim function is available it may be invoked repeatedly
-	 * until at least a single slab can be freed.  This ensures that we
-	 * do free memory back to the system.  This helps minimize the chance
-	 * of an OOM event when the bulk of memory is used by the slab.
-	 *
-	 * When free slabs are already available the reclaim callback will be
-	 * skipped.  Additionally, if no forward progress is detected despite
-	 * a reclaim function the cache will be skipped to avoid deadlock.
-	 *
-	 * Longer term this would be the correct place to add the code which
-	 * repacks the slabs in order minimize fragmentation.
-	 */
-	if (skc->skc_reclaim) {
-		uint64_t objects = UINT64_MAX;
-		int do_reclaim;
-
-		do {
-			spin_lock(&skc->skc_lock);
-			do_reclaim =
-			    (skc->skc_slab_total > 0) &&
-			    ((skc->skc_slab_total-skc->skc_slab_alloc) == 0) &&
-			    (skc->skc_obj_alloc < objects);
-
-			objects = skc->skc_obj_alloc;
-			spin_unlock(&skc->skc_lock);
-
-			if (do_reclaim)
-				skc->skc_reclaim(skc->skc_private);
-
-		} while (do_reclaim);
-	}
 
 	/* Reclaim from the magazine and free all now empty slabs. */
 	if (spl_kmem_cache_expire & KMC_EXPIRE_MEM) {
@@ -1768,12 +1646,13 @@ EXPORT_SYMBOL(spl_kmem_cache_reap_active);
 void
 spl_kmem_reap(void)
 {
-	struct shrink_control sc;
+	spl_kmem_cache_t *skc = NULL;
 
-	sc.nr_to_scan = KMC_REAP_CHUNK;
-	sc.gfp_mask = GFP_KERNEL;
-
-	(void) __spl_kmem_cache_generic_shrinker(NULL, &sc);
+	down_read(&spl_kmem_cache_sem);
+	list_for_each_entry(skc, &spl_kmem_cache_list, skc_list) {
+		spl_kmem_cache_reap_now(skc, 1);
+	}
+	up_read(&spl_kmem_cache_sem);
 }
 EXPORT_SYMBOL(spl_kmem_reap);
 
@@ -1786,7 +1665,6 @@ spl_kmem_cache_init(void)
 	    spl_kmem_cache_kmem_threads, maxclsyspri,
 	    spl_kmem_cache_kmem_threads * 8, INT_MAX,
 	    TASKQ_PREPOPULATE | TASKQ_DYNAMIC);
-	spl_register_shrinker(&spl_kmem_cache_shrinker);
 
 	return (0);
 }
@@ -1794,6 +1672,5 @@ spl_kmem_cache_init(void)
 void
 spl_kmem_cache_fini(void)
 {
-	spl_unregister_shrinker(&spl_kmem_cache_shrinker);
 	taskq_destroy(spl_kmem_cache_taskq);
 }

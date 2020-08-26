@@ -19,25 +19,13 @@
  * CDDL HEADER END
  */
 
-/*
- * Copyright (c) 2015 by Chunwei Chen. All rights reserved.
- */
+#if defined(_KERNEL)
+#if defined(HAVE_DECLARE_EVENT_CLASS)
 
-#ifndef _ZFS_KMAP_H
-#define	_ZFS_KMAP_H
-
-#include <linux/highmem.h>
-#include <linux/uaccess.h>
-
-/* 2.6.37 API change */
-#define	zfs_kmap_atomic(page, km_type)		kmap_atomic(page)
-#define	zfs_kunmap_atomic(addr, km_type)	kunmap_atomic(addr)
-
-/* 5.0 API change - no more 'type' argument for access_ok() */
-#ifdef HAVE_ACCESS_OK_TYPE
-#define	zfs_access_ok(type, addr, size)	access_ok(type, addr, size)
 #else
-#define	zfs_access_ok(type, addr, size)	access_ok(addr, size)
-#endif
 
-#endif	/* _ZFS_KMAP_H */
+DEFINE_DTRACE_PROBE(zfs__rrwfastpath__rdmiss);
+DEFINE_DTRACE_PROBE(zfs__rrwfastpath__exitmiss);
+
+#endif /* HAVE_DECLARE_EVENT_CLASS */
+#endif /* _KERNEL */
