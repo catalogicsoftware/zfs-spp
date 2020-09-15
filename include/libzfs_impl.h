@@ -69,6 +69,7 @@ struct libzfs_handle {
 	char libzfs_chassis_id[256];
 	boolean_t libzfs_prop_debug;
 	boolean_t libzfs_force_export;
+	boolean_t libzfs_dedup_warning_printed;
 };
 
 struct zfs_handle {
