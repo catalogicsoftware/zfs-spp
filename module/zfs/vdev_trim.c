@@ -1357,6 +1357,8 @@ vdev_autotrim_thread(void *arg)
 	vd->vdev_autotrim_thread = NULL;
 	cv_broadcast(&vd->vdev_autotrim_cv);
 	mutex_exit(&vd->vdev_autotrim_lock);
+
+	thread_exit();
 }
 
 /*
