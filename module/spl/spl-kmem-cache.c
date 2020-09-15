@@ -1186,7 +1186,6 @@ spl_cache_grow_work(void *data)
 	smp_mb__after_atomic();
 	if (error == 0)
 		wake_up_all(&skc->skc_waitq);
-		
 
 	kfree(ska);
 }
