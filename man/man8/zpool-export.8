@@ -38,6 +38,7 @@
 .Cm export
 .Op Fl a
 .Op Fl f
+.Op Fl F
 .Ar pool Ns ...
 .Sh DESCRIPTION
 .Bl -tag -width Ds
@@ -46,6 +47,7 @@
 .Cm export
 .Op Fl a
 .Op Fl f
+.Op Fl F
 .Ar pool Ns ...
 .Xc
 Exports the given pools from the system.
@@ -70,13 +72,23 @@ the disks.
 Exports all pools imported on the system.
 .It Fl f
 Forcefully unmount all datasets, using the
-.Nm unmount Fl f
+.Nm umount Fl f
 command.
-This option is not supported on Linux.
+Any process attempting to access the filesystem while a force unmount is in
+progress will receive an I/O error.
 .Pp
 This command will forcefully export the pool even if it has a shared spare that
 is currently being used.
 This may lead to potential data corruption.
+.It Fl F
+Forcibly export the pool.
+.Pp
+This option allows a pool to be exported even when the underlying disks are
+offline and the pool is unavailable.
+When force exporting a pool, any outstanding dirty data will be discarded.
+This option implies the
+.It Fl f
+option.
 .El
 .El
 .Sh SEE ALSO
