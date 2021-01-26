@@ -457,6 +457,16 @@ vdev_submit_bio_impl(struct bio *bio)
 #endif
 }
 
+/*
+ * preempt_schedule_notrace is GPL-only which breaks the ZFS build, so
+ * replace it with preempt_schedule under the following condition:
+ */
+#if defined(CONFIG_ARM64) && \
+    defined(CONFIG_PREEMPTION) && \
+    defined(CONFIG_BLK_CGROUP)
+#define	preempt_schedule_notrace(x) preempt_schedule(x)
+#endif
+
 #ifdef HAVE_BIO_SET_DEV
 #if defined(CONFIG_BLK_CGROUP) && defined(HAVE_BIO_SET_DEV_GPL_ONLY)
 /*
@@ -503,7 +513,7 @@ vdev_bio_associate_blkg(struct bio *bio)
 	ASSERT3P(q, !=, NULL);
 	ASSERT3P(bio->bi_blkg, ==, NULL);
 
-	if (q->root_blkg && vdev_blkg_tryget(q->root_blkg))
+	if (q->root_blkg && blkg_tryget(q->root_blkg))
 		bio->bi_blkg = q->root_blkg;
 }
 #define	bio_associate_blkg vdev_bio_associate_blkg
@@ -798,7 +808,7 @@ vdev_disk_io_done(zio_t *zio)
 		vdev_t *v = zio->io_vd;
 		vdev_disk_t *vd = v->vdev_tsd;
 
-		if (check_disk_change(vd->vd_bdev)) {
+		if (zfs_check_media_change(vd->vd_bdev)) {
 			invalidate_bdev(vd->vd_bdev);
 			v->vdev_remove_wanted = B_TRUE;
 			spa_async_request(zio->io_spa, SPA_ASYNC_REMOVE);
