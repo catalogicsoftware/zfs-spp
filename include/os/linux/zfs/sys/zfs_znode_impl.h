@@ -80,13 +80,26 @@ extern "C" {
 #define	ZFS_ENTER_ERROR(zfsvfs, error)				\
 do {								\
 	rrm_enter_read(&(zfsvfs)->z_teardown_lock, FTAG);	\
-	if ((zfsvfs)->z_unmounted) {				\
+	if ((zfsvfs)->z_unmounted == B_TRUE ||			\
+	    (zfsvfs)->z_force_unmounted == B_TRUE) {		\
 		ZFS_EXIT(zfsvfs);				\
 		return (error);					\
 	}							\
 } while (0)
 #define	ZFS_ENTER(zfsvfs)	ZFS_ENTER_ERROR(zfsvfs, EIO)
 #define	ZPL_ENTER(zfsvfs)	ZFS_ENTER_ERROR(zfsvfs, -EIO)
+
+/* ZFS_ENTER but ok with forced unmount having begun */
+#define	_ZFS_ENTER_UNMOUNTOK(zfsvfs, error)			\
+do {								\
+	rrm_enter_read(&(zfsvfs)->z_teardown_lock, FTAG);	\
+	if ((zfsvfs)->z_unmounted == B_TRUE) {			\
+		ZFS_EXIT(zfsvfs);				\
+		return (error);					\
+	}							\
+} while (0)
+#define	ZFS_ENTER_UNMOUNTOK(zfsvfs)	_ZFS_ENTER_UNMOUNTOK(zfsvfs, EIO)
+#define	ZPL_ENTER_UNMOUNTOK(zfsvfs)	_ZFS_ENTER_UNMOUNTOK(zfsvfs, -EIO)
 
 /* Must be called before exiting the operation. */
 #define	ZFS_EXIT(zfsvfs)					\
