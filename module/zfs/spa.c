@@ -1495,6 +1495,9 @@ spa_should_flush_logs_on_unload(spa_t *spa)
 	if (!spa_feature_is_active(spa, SPA_FEATURE_LOG_SPACEMAP))
 		return (B_FALSE);
 
+	if (spa_exiting_any(spa))
+		return (B_FALSE);
+
 	if (!spa_writeable(spa))
 		return (B_FALSE);
 
@@ -5909,11 +5912,13 @@ static void
 spa_set_killer(spa_t *spa, void *killer)
 {
 
+	cmn_err(CE_WARN, "spa_set_killer(%s):enter = %p", spa_name(spa), killer);
 	mutex_enter(&spa->spa_evicting_os_lock);
 	spa->spa_killer = killer;
 	if (killer != NULL)
 		txg_completion_notify(spa_get_dsl(spa));
 	mutex_exit(&spa->spa_evicting_os_lock);
+	cmn_err(CE_WARN, "spa_set_killer(%s):exit = %p", spa_name(spa), killer);
 }
 
 /*
@@ -5969,6 +5974,7 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	force_removal = hardforce && modifying;
 	if (force_removal) {
 		/* Ensure that references see this change after this. */
+		cmn_err(CE_WARN, "spa_export_common(%s) starting forced export", spa_name(spa));
 		spa_set_killer(spa, curthread);
 	}
 	mutex_exit(&spa_namespace_lock);
@@ -5982,6 +5988,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (force_removal && spa->spa_sync_on) {
 		error = dsl_dataset_sendrecv_cancel_all(spa);
 		if (error != 0) {
+			cmn_err(CE_WARN, "spa_export_common(%s) cancelling forced "
+			    "export due to send/recv error", spa_name(spa));
 			spa_set_killer(spa, NULL);
 			spa_async_resume(spa);
 			return (error);
@@ -6008,6 +6016,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (!force_removal && spa->spa_sync_on) {
 		error = txg_wait_synced_tx(spa->spa_dsl_pool, 0,
 		    NULL, TXG_WAIT_F_NOSUSPEND);
+		cmn_err(CE_WARN, "txg_wait_synced_tx(%s) = %d",
+		    spa_name(spa), error);
 		if (error != 0)
 			goto fail;
 		spa_evicting_os_wait(spa);
@@ -6040,6 +6050,8 @@ spa_export_common(char *pool, int new_state, nvlist_t **oldconfig,
 	if (!spa_refcount_zero(spa) || (spa->spa_inject_ref != 0)) {
 		VERIFY(!force_removal);
 		error = SET_ERROR(EBUSY);
+		cmn_err(CE_WARN, "spa_export_common(%s) = %d, refcount not zero",
+		    spa_name(spa), error);
 		goto fail;
 	}
 
@@ -6100,8 +6112,12 @@ export_spa:
 		 * suspension and abort.
 		 */
 		txg_how = (!hardforce) ? TXG_WAIT_F_NOSUSPEND : 0;
+		cmn_err(CE_WARN, "spa_export_common(%s) spa_unload(, %d)",
+		    spa_name(spa), txg_how);
 		error = spa_unload(spa, txg_how);
-		if (error != 0)
+		cmn_err(CE_WARN, "spa_export_common(%s) spa_unload = %d",
+		    spa_name(spa), error);
+		if (!spa_exiting_any(spa) && error != 0)
 			goto fail;
 		spa_deactivate(spa);
 	}
@@ -6119,8 +6135,11 @@ export_spa:
 	return (0);
 
 fail:
-	if (force_removal)
+	if (force_removal) {
+		cmn_err(CE_WARN, "spa_export_common(%s) cancelling forced export "
+		    "due to error=%d", spa_name(spa), error);
 		spa_set_killer(spa, NULL);
+	}
 	spa_async_resume(spa);
 	mutex_exit(&spa_namespace_lock);
 	return (error);

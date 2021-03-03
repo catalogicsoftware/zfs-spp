@@ -1092,6 +1092,12 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
     const void *buf, dmu_tx_t *tx)
 {
 	int i;
+	spa_t *spa = tx->tx_pool->dp_spa;
+
+	if (spa_exiting_any(spa) != 0) {
+		cmn_err(CE_WARN, "dmu_write_impl() aborting due to spa_exiting_any()");
+		return;
+	}
 
 	for (i = 0; i < numbufs; i++) {
 		uint64_t tocpy;
@@ -1110,7 +1116,13 @@ dmu_write_impl(dmu_buf_t **dbp, int numbufs, uint64_t offset, uint64_t size,
 		else
 			dmu_buf_will_dirty(db, tx);
 
-		(void) memcpy((char *)db->db_data + bufoff, buf, tocpy);
+		if (db == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL dbuf! db=%p. Continuing anyway", db);
+		} else if (db->db_data == NULL) {
+			cmn_err(CE_WARN, "dmu_write_impl() NULL db_data! db=%p db->db_data=%p db->db_size=%lu. Skipping memcpy", db, db->db_data, db->db_size);
+		} else {
+			(void) memcpy((char *)db->db_data + bufoff, buf, tocpy);
+		}
 
 		if (tocpy == db->db_size)
 			dmu_buf_fill_done(db, tx);
@@ -1128,6 +1140,9 @@ dmu_write(objset_t *os, uint64_t object, uint64_t offset, uint64_t size,
 	dmu_buf_t **dbp;
 	int numbufs;
 	int error;
+
+	if (spa_exiting_any(os->os_spa))
+		return;
 
 	if (size == 0)
 		return;

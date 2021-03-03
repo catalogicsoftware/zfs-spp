@@ -279,8 +279,10 @@ txg_sync_stop(dsl_pool_t *dp, uint64_t txg_how)
 	 */
 	err = txg_wait_synced_tx(dp, tx->tx_open_txg + TXG_DEFER_SIZE,
 	    NULL, txg_how);
-	if (err != 0)
+	if (err != 0) {
+		cmn_err(CE_WARN, "txg_sync_stop() txg_wait_synced_tx=%d", err);
 		return (err);
+	}
 
 	/*
 	 * Wake all sync threads and wait for them to die.

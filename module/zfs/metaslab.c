@@ -3695,6 +3695,12 @@ metaslab_flush_update(metaslab_t *msp, dmu_tx_t *tx)
 	metaslab_group_t *mg = msp->ms_group;
 	spa_t *spa = mg->mg_vd->vdev_spa;
 
+	if (spa_exiting_any(spa)) {
+		cmn_err(CE_WARN, "metaslab_flush_update(): spa_exiting_any(%s) = true"
+		    ", aborting metaslab_flush_update()", spa_name(spa));
+		return;
+	}
+
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
 
 	ASSERT3U(spa_sync_pass(spa), ==, 1);
@@ -3751,6 +3757,14 @@ boolean_t
 metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 {
 	spa_t *spa = msp->ms_group->mg_vd->vdev_spa;
+
+	if (spa_exiting_any(spa)) {
+		cmn_err(CE_WARN, "metaslab_flush(): spa_exiting_any(%s) = true"
+		    ", aborting metaslab_flush()", spa_name(spa));
+		return (B_FALSE);
+	}
+	cmn_err(CE_WARN, "metaslab_flush(): spa_exiting_any(%s) = false",
+	    spa_name(spa));
 
 	ASSERT(MUTEX_HELD(&msp->ms_lock));
 	ASSERT3U(spa_sync_pass(spa), ==, 1);
@@ -6180,6 +6194,9 @@ metaslab_update_ondisk_flush_data(metaslab_t *ms, dmu_tx_t *tx)
 		VERIFY0(zap_add(mos, vd->vdev_top_zap,
 		    VDEV_TOP_ZAP_MS_UNFLUSHED_PHYS_TXGS, sizeof (uint64_t), 1,
 		    &object, tx));
+	} else if (err != 0 && spa_exiting_any(spa)) {
+		cmn_err(CE_WARN, "metaslab_update_ondisk_flush_data(): aborting due to forced export");
+		return;
 	} else {
 		VERIFY0(err);
 	}

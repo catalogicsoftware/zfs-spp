@@ -527,6 +527,9 @@ space_map_write_seg(space_map_t *sm, uint64_t rstart, uint64_t rend,
     maptype_t maptype, uint64_t vdev_id, uint8_t words, dmu_buf_t **dbp,
     void *tag, dmu_tx_t *tx)
 {
+	spa_t *spa = tx->tx_pool->dp_spa;
+	int error;
+
 	ASSERT3U(words, !=, 0);
 	ASSERT3U(words, <=, 2);
 
@@ -569,9 +572,15 @@ space_map_write_seg(space_map_t *sm, uint64_t rstart, uint64_t rend,
 			dmu_buf_rele(db, tag);
 
 			uint64_t next_word_offset = sm->sm_phys->smp_length;
-			VERIFY0(dmu_buf_hold(sm->sm_os,
+			error = dmu_buf_hold(sm->sm_os,
 			    space_map_object(sm), next_word_offset,
-			    tag, &db, DMU_READ_PREFETCH));
+			    tag, &db, DMU_READ_PREFETCH);
+			VERIFY(error == 0 || spa_exiting_any(spa));
+			if (error != 0) {
+				cmn_err(CE_WARN, "space_map_write_seg() error=%d", error);
+				return;
+			}
+
 			dmu_buf_will_dirty(db, tx);
 
 			/* update caller's dbuf */
@@ -648,6 +657,7 @@ space_map_write_impl(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
 {
 	spa_t *spa = tx->tx_pool->dp_spa;
 	dmu_buf_t *db;
+	int error;
 
 	space_map_write_intro_debug(sm, maptype, tx);
 
@@ -668,8 +678,14 @@ space_map_write_impl(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
 	 * start appending to it.
 	 */
 	uint64_t next_word_offset = sm->sm_phys->smp_length;
-	VERIFY0(dmu_buf_hold(sm->sm_os, space_map_object(sm),
-	    next_word_offset, FTAG, &db, DMU_READ_PREFETCH));
+	error = dmu_buf_hold(sm->sm_os, space_map_object(sm),
+	    next_word_offset, FTAG, &db, DMU_READ_PREFETCH);
+	VERIFY(error == 0 || spa_exiting_any(spa));
+	if (error != 0) {
+		cmn_err(CE_WARN, "space_map_write_impl() error=%d", error);
+		return;
+	}
+
 	ASSERT3U(db->db_size, ==, sm->sm_blksz);
 
 	dmu_buf_will_dirty(db, tx);
@@ -732,6 +748,11 @@ void
 space_map_write(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
     uint64_t vdev_id, dmu_tx_t *tx)
 {
+	spa_t *spa = tx->tx_pool->dp_spa;
+
+	if (spa_exiting_any(spa))
+		return;
+
 	ASSERT(dsl_pool_sync_context(dmu_objset_pool(sm->sm_os)));
 	VERIFY3U(space_map_object(sm), !=, 0);
 

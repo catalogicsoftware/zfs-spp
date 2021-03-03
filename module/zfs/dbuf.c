@@ -2050,8 +2050,18 @@ dbuf_dirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 				 * syncing state (since they are only modified
 				 * then).
 				 */
-				arc_release(db->db_buf, db);
-				dbuf_fix_old_data(db, tx->tx_txg);
+				if (db == NULL) {
+					cmn_err(CE_WARN, "dbuf_dirty(): NULL dbuf! db=%p", db);
+				} else if(db->db_buf == NULL) {
+					cmn_err(CE_WARN, "dbuf_dirty(): NULL dbuf buf! db=%p db_buf=%p", db, db->db_buf);
+					if (spa_exiting_any(os->os_spa)) {
+						cmn_err(CE_WARN, "dbuf_dirty(): forced export + NULL, aborting");
+						return (NULL);
+					}
+				} else {
+					arc_release(db->db_buf, db);
+					dbuf_fix_old_data(db, tx->tx_txg);
+				}
 				data_old = db->db_buf;
 			}
 			ASSERT(data_old != NULL);
@@ -2363,6 +2373,12 @@ void
 dmu_buf_will_fill(dmu_buf_t *db_fake, dmu_tx_t *tx)
 {
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)db_fake;
+
+	if (db == NULL) {
+		cmn_err(CE_WARN, "dmu_buf_will_fill() NULL dbuf! db=%p", db);
+	} else if (db->db_buf == NULL) {
+		cmn_err(CE_WARN, "dmu_buf_will_fill() NULL db_buf! db=%p", db);
+	}
 
 	ASSERT(db->db_blkid != DMU_BONUS_BLKID);
 	ASSERT(tx->tx_txg != 0);
