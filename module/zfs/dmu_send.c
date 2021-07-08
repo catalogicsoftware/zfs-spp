@@ -1272,6 +1272,12 @@ dmu_send(dsl_pool_t **dpp, dsl_dataset_t *to_ds, dsl_dataset_t *fromds,
 		zb.zbm_creation_txg = dsl_dataset_phys(fromds)->ds_creation_txg;
 		zb.zbm_guid = dsl_dataset_phys(fromds)->ds_guid;
 		is_clone = (fromds->ds_dir != to_ds->ds_dir);
+		if (dsl_dataset_is_zapified(fromds)) {
+			(void) zap_lookup(dp->dp_meta_objset,
+				fromds->ds_object,
+				DS_FIELD_IVSET_GUID, 8, 1,
+				&zb.zbm_ivset_guid);
+		}
 	} else if (fromzb != NULL) {
 		ASSERT3P(fromds, ==, NULL);
 		err = dsl_bookmark_lookup(dp, fromzb, to_ds, &zb);
