@@ -2823,7 +2823,7 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		if (err != 0)
 			kmem_free(ra->rrd, sizeof (*ra->rrd));
 		ra->rrd = NULL;
-	}
+	}	
 
 	if (err == 0 && rwa->err == 0) {
 		ASSERT3P(ra->rrd, ==, NULL);
