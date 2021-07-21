@@ -56,10 +56,10 @@ typedef struct dmu_recv_cookie {
 	nvlist_t *drc_keynvl;
 	zio_cksum_t drc_cksum;
 	uint64_t drc_fromsnapobj;
+	uint64_t drc_ivset_guid;
 	uint64_t drc_newsnapobj;
 	unsigned int drc_flags;
 	void *drc_rwa;
-	uint64_t drc_ivset_guid;
 	void *drc_owner;
 	cred_t *drc_cred;
 } dmu_recv_cookie_t;
