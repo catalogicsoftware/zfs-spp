@@ -3770,6 +3770,9 @@ metaslab_flush(metaslab_t *msp, dmu_tx_t *tx)
 	ASSERT(metaslab_unflushed_txg(msp) != 0);
 	ASSERT(avl_find(&spa->spa_metaslabs_by_flushed, msp, NULL) != NULL);
 
+	if (spa_exiting_any(spa)) {
+		return (B_FALSE);
+	}
 	/*
 	 * There is nothing wrong with flushing the same metaslab twice, as
 	 * this codepath should work on that case. However, the current
@@ -6149,6 +6152,10 @@ metaslab_enable(metaslab_t *msp, boolean_t sync, boolean_t unload)
 	metaslab_group_t *mg = msp->ms_group;
 	spa_t *spa = mg->mg_vd->vdev_spa;
 
+	if (spa_exiting_any(spa)) {
+		return;
+	}
+
 	/*
 	 * Wait for the outstanding IO to be synced to prevent newly
 	 * allocated blocks from being overwritten.  This used by
@@ -6194,6 +6201,8 @@ metaslab_update_ondisk_flush_data(metaslab_t *ms, dmu_tx_t *tx)
 		VERIFY0(zap_add(mos, vd->vdev_top_zap,
 		    VDEV_TOP_ZAP_MS_UNFLUSHED_PHYS_TXGS, sizeof (uint64_t), 1,
 		    &object, tx));
+	} else if (spa_exiting_any(spa)) {
+		/* Do nothing */
 	} else {
 		VERIFY0(err);
 	}

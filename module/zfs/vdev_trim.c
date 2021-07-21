@@ -167,7 +167,8 @@ static boolean_t
 vdev_trim_should_stop(vdev_t *vd)
 {
 	return (vd->vdev_trim_exit_wanted || !vdev_writeable(vd) ||
-	    vd->vdev_detached || vd->vdev_top->vdev_removing);
+	    vd->vdev_detached || vd->vdev_top->vdev_removing ||
+	    spa_exiting_any(vd->vdev_spa));
 }
 
 /*
@@ -178,7 +179,8 @@ vdev_autotrim_should_stop(vdev_t *tvd)
 {
 	return (tvd->vdev_autotrim_exit_wanted ||
 	    !vdev_writeable(tvd) || tvd->vdev_removing ||
-	    spa_get_autotrim(tvd->vdev_spa) == SPA_AUTOTRIM_OFF);
+	    spa_get_autotrim(tvd->vdev_spa) == SPA_AUTOTRIM_OFF ||
+	    spa_exiting_any(tvd->vdev_spa));
 }
 
 /*

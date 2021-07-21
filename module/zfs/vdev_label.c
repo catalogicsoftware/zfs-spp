@@ -570,7 +570,7 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 		}
 	}
 
-	if (getstats) {
+	if (getstats && !spa_exiting_any(spa)) {
 		vdev_config_generate_stats(vd, nv);
 
 		root_vdev_actions_getprogress(vd, nv);

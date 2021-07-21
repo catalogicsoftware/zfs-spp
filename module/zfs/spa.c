@@ -1407,6 +1407,8 @@ spa_deactivate(spa_t *spa)
 	if (spa_exiting_any(spa)) {
 		metaslab_class_force_discard(spa->spa_normal_class);
 		metaslab_class_force_discard(spa->spa_log_class);
+		metaslab_class_force_discard(spa->spa_special_class);
+		metaslab_class_force_discard(spa->spa_dedup_class);
 	}
 
 	metaslab_class_destroy(spa->spa_normal_class);
@@ -6559,8 +6561,8 @@ export_spa:
 		 * If the pool is not being hard forced, throw an error upon
 		 * suspension and abort.
 		 */
-		error = spa_unload(spa,
-		    hardforce ? TXG_WAIT_F_NONE : TXG_WAIT_F_NOSUSPEND);
+		error = spa_unload(spa, hardforce ?
+		    TXG_WAIT_F_FORCE_EXPORT : TXG_WAIT_F_NOSUSPEND);
 		if (error != 0)
 			goto fail;
 		spa_deactivate(spa);
